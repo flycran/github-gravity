@@ -6,14 +6,15 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
-    "types": ["node", "bun"],
-    "lib": ["ES2022"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "newLine": "lf",
     "noImplicitAny": true,
     "noUnusedLocals": true,
     "noUnusedParameters": false,
+    "rootDir": "./src",
+    "outDir": "./dist",
     "pretty": true,
     "resolveJsonModule": true,
     "strict": true,
@@ -21,5 +22,6 @@
     "target": "ES2022",
     "composite": true
   },
-  "include": ["main.ts"]
+  "exclude": ["__fixtures__", "__tests__", "coverage", "dist", "node_modules"],
+  "include": ["src/web", "src/types", "src/utils"]
 }

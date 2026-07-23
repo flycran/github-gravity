@@ -2,10 +2,10 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "references": [
     {
-      "path": "./tsconfig.app.json"
+      "path": "./tsconfig.web.json"
     },
     {
-      "path": "./tsconfig.main.json"
+      "path": "./tsconfig.bun.json"
     }
   ]
 }
