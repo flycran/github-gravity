@@ -38,7 +38,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@actions/core": "^3.0.0",
+    "@actions/core": "^3.0.1",
     "@dimforge/rapier2d": "^0.19.3",
     "@dimforge/rapier2d-compat": "^0.19.3",
     "earcut": "^3.2.3",
