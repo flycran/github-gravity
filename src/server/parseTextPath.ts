@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import earcut from 'earcut'
-import opentype from 'opentype.js'
+import * as opentype from 'opentype.js'
 import { pointsOnPath } from 'points-on-path'
-import { FONT_SIZE, SCALE, TextPathResult } from '../utils'
+import { SCALE, TextPathResult } from '../utils'
 
 function svgPathToRapierTrimesh(path: string, scale = 1, tolerance = 1) {
   // pointsOnPath returns Point[][] — one array per sub-path, flatten them
@@ -23,12 +25,15 @@ function svgPathToRapierTrimesh(path: string, scale = 1, tolerance = 1) {
   }
 }
 
-const font = opentype.parse(
-  await Bun.file('src/assets/ARIAL.ttf').arrayBuffer()
-)
+// 字体文件路径：优先使用环境变量，否则使用默认路径
+const FONT_PATH =
+  process.env.GRAVITY_FONT_PATH ||
+  fileURLToPath(new URL('../assets/ARIAL.ttf', import.meta.url))
 
-export function getTextPaths(text: string): TextPathResult[] {
-  const paths = font.getPaths(text, 0, 0, FONT_SIZE / SCALE)
+const font = opentype.parse(readFileSync(FONT_PATH).buffer as ArrayBuffer)
+
+export function getTextPaths(text: string, fontSize: number): TextPathResult[] {
+  const paths = font.getPaths(text, 0, 0, fontSize / SCALE)
 
   return paths.map((path) => {
     const bbox = path.getBoundingBox()

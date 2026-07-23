@@ -1,4 +1,4 @@
-import { FONT_SIZE, HEIGHT, SCALE, SIZE, TEXT, TEXT_TOP, WIDTH } from '../utils'
+import { HEIGHT, SCALE, SIZE, WIDTH } from '../utils'
 import type { ContributionJson, SimulationResult } from '../utils/index'
 
 const trajectoryRes: SimulationResult = await fetch('/trajectory').then((res) =>

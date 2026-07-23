@@ -1,27 +1,45 @@
+import { writeFileSync } from 'node:fs'
 import * as core from '@actions/core'
-import { wait } from './wait.js'
+import { gensvg } from './gensvg.js'
 
 /**
- * The main function for the action.
+ * GitHub Action 入口：生成 GitHub 贡献图重力跌落动画 SVG。
  *
- * @returns Resolves when the action is complete.
+ * 输入参数：
+ * - username: GitHub 用户名（必填）
+ * - text: 显示的文字，默认为 username
+ * - output-path: SVG 输出路径，默认为 gravity.svg
+ * - font-size: 文字大小，默认为 80
+ * - sample-rate: 轨迹采样率，默认为 4
+ *
+ * 输出：
+ * - svg-path: 生成的 SVG 文件路径
  */
 export async function run(): Promise<void> {
   try {
-    const ms: string = core.getInput('milliseconds')
+    const username: string = core.getInput('username', { required: true })
+    const text: string = core.getInput('text') || username
+    const outputPath: string = core.getInput('output-path') || 'gravity.svg'
+    const fontSize: number = parseInt(core.getInput('font-size') || '80', 10)
+    const sampleRate: number = parseInt(core.getInput('sample-rate') || '4', 10)
 
-    // Debug logs are only output if the `ACTIONS_STEP_DEBUG` secret is true
-    core.debug(`Waiting ${ms} milliseconds ...`)
+    core.info(`Generating gravity SVG for user: ${username}`)
+    core.info(
+      `Text: "${text}", Font size: ${fontSize}, Sample rate: ${sampleRate}`
+    )
 
-    // Log the current timestamp, wait, then log the new timestamp
-    core.debug(new Date().toTimeString())
-    await wait(parseInt(ms, 10))
-    core.debug(new Date().toTimeString())
+    const svg = await gensvg({
+      username,
+      text,
+      fontSize,
+      sampleRate
+    })
 
-    // Set outputs for other workflow steps to use
-    core.setOutput('time', new Date().toTimeString())
+    writeFileSync(outputPath, svg, 'utf-8')
+    core.info(`SVG written to: ${outputPath}`)
+
+    core.setOutput('svg-path', outputPath)
   } catch (error) {
-    // Fail the workflow run if an error occurs
     if (error instanceof Error) core.setFailed(error.message)
   }
 }

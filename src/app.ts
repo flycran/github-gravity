@@ -3,8 +3,6 @@ import { startSimulation } from './server/physics'
 import { GITHUB_ID, TEXT } from './utils'
 import pageApp from './web/index.html'
 
-const res = await startSimulation(GITHUB_ID, TEXT)
-
 Bun.serve({
   port: 3000,
   development: {
@@ -14,10 +12,20 @@ Bun.serve({
   routes: {
     '/': pageApp,
     '/trajectory': async () => {
-      return Response.json(res)
+      return Response.json(
+        await startSimulation({
+          username: GITHUB_ID,
+          text: TEXT,
+          sampleRate: 8
+        })
+      )
     },
     '/svg': async () => {
-      const svg = await gensvg({ username: GITHUB_ID, text: TEXT })
+      const svg = await gensvg({
+        username: GITHUB_ID,
+        text: TEXT,
+        sampleRate: 8
+      })
       return new Response(svg, {
         headers: { 'Content-Type': 'image/svg+xml' }
       })

@@ -7,6 +7,7 @@ import {
 } from '@dimforge/rapier2d-compat'
 import {
   ContributionJson,
+  FONT_SIZE,
   HEIGHT,
   INTERVAL,
   SIZE,
@@ -33,11 +34,19 @@ export class Contribution implements ContributionJson {
   }[]
 
   collider: Collider
+  private sampleRate: number
+  private stepCounter: number
 
-  constructor(contributionDay: RawContributionDay, collider: Collider) {
+  constructor(
+    contributionDay: RawContributionDay,
+    collider: Collider,
+    sampleRate: number
+  ) {
     this.collider = collider
     this.date = contributionDay.date
     this.color = INTENSITY_COLORS[contributionDay.intensity]
+    this.sampleRate = sampleRate
+    this.stepCounter = 0
     const pos = collider.translation()
     this.x = pos.x
     this.y = pos.y
@@ -45,6 +54,8 @@ export class Contribution implements ContributionJson {
   }
 
   update() {
+    this.stepCounter++
+    if (this.stepCounter % this.sampleRate !== 0) return
     const pos = this.collider.translation()
     this.x = pos.x
     this.y = pos.y
@@ -91,15 +102,24 @@ async function createWord() {
 /** 速度小于此阈值视为静止 */
 const VELOCITY_THRESHOLD = 1e-3
 
-export async function startSimulation(
-  username: string,
-  text: string = username
-): Promise<SimulationResult> {
+export interface SimulationOptions {
+  username: string
+  text?: string
+  fontSize?: number
+  sampleRate?: number
+}
+
+export async function startSimulation({
+  username,
+  text = username,
+  fontSize = FONT_SIZE,
+  sampleRate = 4
+}: SimulationOptions): Promise<SimulationResult> {
   const world = await createWord()
   const contributionsSet = new Set<Contribution>()
 
   // 创建用户名文字静止刚体（居中对齐），同时收集三角网格数据
-  const textPaths = getTextPaths(text)
+  const textPaths = getTextPaths(text, fontSize)
 
   // 计算所有字形的整体包围盒（翻转 Y 轴后）
   let minX = Infinity,
@@ -164,7 +184,9 @@ export async function startSimulation(
       )
     )
 
-    contributionsSet.add(new Contribution(contributionDay, boxCollider))
+    contributionsSet.add(
+      new Contribution(contributionDay, boxCollider, sampleRate)
+    )
   }
 
   const githubContributions = await fetchContributions(username)

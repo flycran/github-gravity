@@ -5,6 +5,9 @@ import { HEIGHT, SCALE, SIZE, WIDTH } from './utils'
 export interface GensvgOptions {
   username: string
   text: string
+  fontSize?: number
+  /** 轨迹采样率，每隔 N 步记录一个轨迹点。默认为 1（不采样）。值越大，SVG 越小 */
+  sampleRate?: number
 }
 
 /**
@@ -16,9 +19,16 @@ export interface GensvgOptions {
  */
 export async function gensvg({
   username,
-  text
+  text,
+  fontSize,
+  sampleRate
 }: GensvgOptions): Promise<string> {
-  const result: SimulationResult = await startSimulation(username, text)
+  const result: SimulationResult = await startSimulation({
+    username,
+    text,
+    fontSize,
+    sampleRate
+  })
 
   const svgWidth = WIDTH * SCALE
   const svgHeight = HEIGHT * SCALE

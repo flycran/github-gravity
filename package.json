@@ -1,5 +1,5 @@
 {
-  "name": "typescript-action",
+  "name": "github-gravity",
   "description": "GitHub Actions TypeScript template",
   "version": "0.0.0",
   "author": "",
@@ -13,7 +13,9 @@
   "bugs": {
     "url": "https://github.com/actions/typescript-action/issues"
   },
-  "keywords": ["actions"],
+  "keywords": [
+    "actions"
+  ],
   "exports": {
     ".": "./dist/index.js"
   },
