@@ -1,4 +1,4 @@
-import { HEIGHT, SCALE, SIZE, WIDTH } from '../utils'
+import { FONT_SIZE, HEIGHT, SCALE, SIZE, TEXT, TEXT_TOP, WIDTH } from '../utils'
 import type { ContributionJson, SimulationResult } from '../utils/index'
 
 const trajectoryRes: SimulationResult = await fetch('/trajectory').then((res) =>
@@ -43,7 +43,7 @@ function createContribution(contribution: ContributionJson) {
       .map(({ x, y }) => `${x * SCALE},${(HEIGHT - y) * SCALE}`)
       .join(';')
   )
-  animateTransform.setAttribute('dur', `${trajectoryRes.stepCount * 16}ms`)
+  animateTransform.setAttribute('dur', `${trajectoryRes.stepCount * 8}ms`)
   animateTransform.setAttribute('fill', 'freeze')
 
   g.appendChild(animateTransform)
@@ -52,16 +52,40 @@ function createContribution(contribution: ContributionJson) {
 trajectoryRes.contributions.forEach(createContribution)
 
 // 用三角网格渲染用户名文字（与物理碰撞体完全一致）
-for (const tri of trajectoryRes.textTriangles) {
-  const [x0, y0, x1, y1, x2, y2] = tri
-  const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon')
-  poly.setAttribute(
-    'points',
-    `${(x0 * SCALE).toFixed(1)},${((HEIGHT - y0) * SCALE).toFixed(1)} ${(x1 * SCALE).toFixed(1)},${((HEIGHT - y1) * SCALE).toFixed(1)} ${(x2 * SCALE).toFixed(1)},${((HEIGHT - y2) * SCALE).toFixed(1)}`
-  )
-  poly.setAttribute('fill', '#333')
-  poly.setAttribute('opacity', '0.3')
-  svg.appendChild(poly)
-}
+// for (const tri of trajectoryRes.textTriangles) {
+//   const [x0, y0, x1, y1, x2, y2] = tri
+//   const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon')
+//   poly.setAttribute(
+//     'points',
+//     `${(x0 * SCALE).toFixed(1)},${((HEIGHT - y0) * SCALE).toFixed(1)} ${(x1 * SCALE).toFixed(1)},${((HEIGHT - y1) * SCALE).toFixed(1)} ${(x2 * SCALE).toFixed(1)},${((HEIGHT - y2) * SCALE).toFixed(1)}`
+//   )
+//   poly.setAttribute('fill', '#000')
+//   svg.appendChild(poly)
+// }
+
+// 参考文字：用 SVG <text> 居中渲染，方便对比碰撞体轮廓是否对齐
+const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+textEl.textContent = TEXT
+textEl.setAttribute('x', `${(WIDTH / 2) * SCALE}`)
+textEl.setAttribute('y', `${TEXT_TOP * SCALE}`)
+textEl.setAttribute('font-size', `${FONT_SIZE}`)
+textEl.setAttribute('font-family', 'ArialCustom, sans-serif')
+textEl.setAttribute('text-anchor', 'middle')
+textEl.setAttribute('dominant-baseline', 'hanging')
+textEl.setAttribute('fill', 'black')
+svg.appendChild(textEl)
+
+const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+svg.appendChild(g)
+g.style.transform = `scale(${SCALE}) translate(0, ${TEXT_TOP}px)`
+
+trajectoryRes.textPaths.forEach(({ pathData, rect }) => {
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  path.setAttribute('d', pathData)
+  path.setAttribute('fill', 'black')
+  g.appendChild(path)
+})
+
+svg.appendChild(g)
 
 export {}

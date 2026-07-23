@@ -11,6 +11,7 @@ import {
   INTERVAL,
   SIZE,
   SimulationResult,
+  TEXT_TOP,
   WIDTH
 } from '../utils'
 import {
@@ -66,15 +67,13 @@ export class Contribution implements ContributionJson {
 async function createWord() {
   await init()
   // 重力
-  const world = new World({ x: 0.0, y: -16 })
-  world.lengthUnit = 10
+  const world = new World({ x: 0.0, y: -30 })
+  world.lengthUnit = 16
 
   // 地面
   world.createCollider(
     ColliderDesc.cuboid(WIDTH, 1),
-    world.createRigidBody(
-      RigidBodyDesc.fixed().setCcdEnabled(true).setTranslation(0, -1)
-    )
+    world.createRigidBody(RigidBodyDesc.fixed().setTranslation(0, -1))
   )
   // 墙壁
   world.createCollider(
@@ -93,36 +92,61 @@ async function createWord() {
 const VELOCITY_THRESHOLD = 1e-3
 
 export async function startSimulation(
-  username: string
+  username: string,
+  text: string = username
 ): Promise<SimulationResult> {
   const world = await createWord()
   const contributionsSet = new Set<Contribution>()
 
   // 创建用户名文字静止刚体（居中对齐），同时收集三角网格数据
-  const textPaths = getTextPaths(username)
-  const totalWidth = textPaths.reduce((sum, { rect }) => sum + rect.width, 0)
-  const offsetX = (WIDTH - totalWidth) / 2
-  const centerY = HEIGHT / 2
+  const textPaths = getTextPaths(text)
+
+  // 计算所有字形的整体包围盒（翻转 Y 轴后）
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity
+  for (const { rect } of textPaths) {
+    if (rect.x < minX) minX = rect.x
+    if (rect.x + rect.width > maxX) maxX = rect.x + rect.width
+    // 翻转 Y：opentype 字形在基线下方（y 为负），碰撞体需要正向
+    const top = -rect.y
+    const bottom = -(rect.y + rect.height)
+    if (bottom < minY) minY = bottom
+    if (top > maxY) maxY = top
+  }
+  const bboxCenterX = (minX + maxX) / 2
+  const offsetX = WIDTH / 2 - bboxCenterX
+  // 文字顶部距离世界顶部的距离
+  const centerY = HEIGHT - TEXT_TOP - maxY
   const textTriangles: number[][] = []
 
   for (const { paths } of textPaths) {
     const { vertices, indices } = paths
-    const cx = offsetX
+    if (!vertices.length && !indices.length) continue
+    // 翻转 Y 轴：opentype 字形在基线下方（y 为负），物理世界需要正向
+    const flippedVertices = new Float32Array(vertices.length)
+    for (let i = 0; i < vertices.length; i += 2) {
+      flippedVertices[i] = vertices[i]
+      flippedVertices[i + 1] = -vertices[i + 1]
+    }
     world.createCollider(
-      ColliderDesc.trimesh(vertices, indices),
-      world.createRigidBody(RigidBodyDesc.fixed().setTranslation(cx, centerY))
+      ColliderDesc.trimesh(flippedVertices, indices),
+      world.createRigidBody(
+        RigidBodyDesc.fixed().setTranslation(offsetX, centerY)
+      )
     )
     for (let i = 0; i < indices.length; i += 3) {
       const i0 = indices[i] * 2,
         i1 = indices[i + 1] * 2,
         i2 = indices[i + 2] * 2
       textTriangles.push([
-        cx + vertices[i0],
-        centerY + vertices[i0 + 1],
-        cx + vertices[i1],
-        centerY + vertices[i1 + 1],
-        cx + vertices[i2],
-        centerY + vertices[i2 + 1]
+        offsetX + flippedVertices[i0],
+        centerY + flippedVertices[i0 + 1],
+        offsetX + flippedVertices[i1],
+        centerY + flippedVertices[i1 + 1],
+        offsetX + flippedVertices[i2],
+        centerY + flippedVertices[i2 + 1]
       ])
     }
   }
@@ -134,7 +158,7 @@ export async function startSimulation(
   ) {
     // 动态刚体
     const boxCollider = world.createCollider(
-      ColliderDesc.cuboid(SIZE / 2, SIZE / 2),
+      ColliderDesc.cuboid(SIZE / 2, SIZE / 2).setFriction(0.2),
       world.createRigidBody(
         RigidBodyDesc.dynamic().setCcdEnabled(true).setTranslation(x, y)
       )
@@ -148,7 +172,7 @@ export async function startSimulation(
   const rowLen = githubContributions.contributions.length
   const rowWidth = SIZE * rowLen + INTERVAL * (rowLen - 1)
   const left = (WIDTH - rowWidth) / 2
-  const top = HEIGHT * 0.9
+  const top = HEIGHT * 1
 
   for (let rowIndex = 0; rowIndex < rowLen; rowIndex++) {
     const col = githubContributions.contributions[rowIndex]
@@ -211,6 +235,10 @@ export async function startSimulation(
     contributions: Array.from(contributionsSet).map((contribution) =>
       contribution.toJSON()
     ),
+    textPaths: textPaths.map(({ pathData, rect }) => ({
+      pathData: pathData,
+      rect: rect
+    })),
     textTriangles
   }
 }

@@ -1,9 +1,10 @@
 import { startSimulation } from './server/physics'
 import type { ContributionJson, SimulationResult } from './utils'
-import { HEIGHT, SCALE, SIZE, WIDTH } from './utils'
+import { FONT_SIZE, HEIGHT, SCALE, SIZE, TEXT, TEXT_TOP, WIDTH } from './utils'
 
 export interface GensvgOptions {
-  name: string
+  username: string
+  text: string
 }
 
 /**
@@ -13,9 +14,11 @@ export interface GensvgOptions {
  * @param options - 包含 GitHub 用户名
  * @returns 完整的 SVG 字符串
  */
-export async function gensvg(options: GensvgOptions): Promise<string> {
-  const { name } = options
-  const result: SimulationResult = await startSimulation(name)
+export async function gensvg({
+  username,
+  text
+}: GensvgOptions): Promise<string> {
+  const result: SimulationResult = await startSimulation(username, text)
 
   const svgWidth = WIDTH * SCALE
   const svgHeight = HEIGHT * SCALE
@@ -44,12 +47,25 @@ export async function gensvg(options: GensvgOptions): Promise<string> {
       attributeType="XML"
       type="translate"
       values="${values}"
-      dur="${result.stepCount * 16}ms"
+      dur="${result.stepCount * 8}ms"
       fill="freeze"
     />
   </g>`
     })
     .join('\n')
+
+  const textSvg = `
+    <text
+      x="${(WIDTH / 2) * SCALE}"
+      y="${TEXT_TOP * SCALE}"
+      font-size="${FONT_SIZE}"
+      font-family="ArialCustom, sans-serif"
+      text-anchor="middle"
+      dominant-baseline="hanging"
+      fill="black"
+    >
+      ${TEXT}
+    </text>`
 
   const svg = `<svg
   xmlns="http://www.w3.org/2000/svg"
@@ -57,7 +73,14 @@ export async function gensvg(options: GensvgOptions): Promise<string> {
   height="${svgHeight}"
   viewBox="0 0 ${svgWidth} ${svgHeight}"
 >
+  <style>
+    @font-face {
+      font-family: "ArialCustom";
+      src: url("/assets/ARIAL.ttf") format("truetype");
+    }
+    </style>
 ${contributionsSvg}
+${textSvg}
 </svg>`
 
   return svg

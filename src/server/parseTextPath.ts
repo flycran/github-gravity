@@ -1,7 +1,7 @@
 import earcut from 'earcut'
 import opentype from 'opentype.js'
 import { pointsOnPath } from 'points-on-path'
-import { FONT_SIZE, SCALE } from '../utils'
+import { FONT_SIZE, SCALE, TextPathResult } from '../utils'
 
 function svgPathToRapierTrimesh(path: string, scale = 1, tolerance = 1) {
   // pointsOnPath returns Point[][] — one array per sub-path, flatten them
@@ -27,26 +27,15 @@ const font = opentype.parse(
   await Bun.file('src/assets/ARIAL.ttf').arrayBuffer()
 )
 
-export interface TextPathResult {
-  paths: {
-    vertices: Float32Array
-    indices: Uint32Array
-  }
-  rect: {
-    x: number
-    y: number
-    width: number
-    height: number
-  }
-}
-
 export function getTextPaths(text: string): TextPathResult[] {
   const paths = font.getPaths(text, 0, 0, FONT_SIZE / SCALE)
 
   return paths.map((path) => {
     const bbox = path.getBoundingBox()
+    const pathData = path.toPathData(2)
     return {
-      paths: svgPathToRapierTrimesh(path.toPathData(2)),
+      paths: svgPathToRapierTrimesh(pathData),
+      pathData: pathData,
       rect: {
         x: bbox.x1,
         y: bbox.y1,

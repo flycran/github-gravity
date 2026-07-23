@@ -1,10 +1,26 @@
-export const WIDTH = 200
-export const HEIGHT = 100
-export const SIZE = 2
-export const SCALE = 6
-export const INTERVAL = SIZE / 2
-export const FONT_SIZE = 120
-export const TEXT = 'Flycran'
+export const WIDTH = 300
+export const HEIGHT = 150
+export const SCALE = 3
+export const SIZE = 4
+export const INTERVAL = 1.5
+export const FONT_SIZE = 80
+export const TEXT_TOP = 50
+export const GITHUB_ID = 'Orta'
+export const TEXT = 'Orta Therox'
+
+export interface TextPathResult {
+  paths: {
+    vertices: Float32Array
+    indices: Uint32Array
+  }
+  pathData: string
+  rect: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+}
 
 export interface ContributionJson {
   date: string
@@ -18,6 +34,7 @@ export interface ContributionJson {
 export interface SimulationResult {
   stepCount: number
   time: number
+  textPaths: Pick<TextPathResult, 'rect' | 'pathData'>[]
   contributions: ContributionJson[]
   /** 用户名文字碰撞体的三角网格（世界坐标），用于 web 端渲染 */
   textTriangles: number[][]

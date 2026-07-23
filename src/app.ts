@@ -1,9 +1,9 @@
 import { gensvg } from './gensvg'
 import { startSimulation } from './server/physics'
-import { TEXT } from './utils'
+import { GITHUB_ID, TEXT } from './utils'
 import pageApp from './web/index.html'
 
-const res = await startSimulation('yyx990803')
+const res = await startSimulation(GITHUB_ID, TEXT)
 
 Bun.serve({
   port: 3000,
@@ -17,7 +17,7 @@ Bun.serve({
       return Response.json(res)
     },
     '/svg': async () => {
-      const svg = await gensvg({ name: 'Platane' })
+      const svg = await gensvg({ username: GITHUB_ID, text: TEXT })
       return new Response(svg, {
         headers: { 'Content-Type': 'image/svg+xml' }
       })
