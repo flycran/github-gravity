@@ -63,21 +63,16 @@ trajectoryRes.contributions.forEach(createContribution)
 //   svg.appendChild(poly)
 // }
 
-// 参考文字：用 SVG <text> 居中渲染，方便对比碰撞体轮廓是否对齐
-const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text')
-textEl.textContent = TEXT
-textEl.setAttribute('x', `${(WIDTH / 2) * SCALE}`)
-textEl.setAttribute('y', `${TEXT_TOP * SCALE}`)
-textEl.setAttribute('font-size', `${FONT_SIZE}`)
-textEl.setAttribute('font-family', 'ArialCustom, sans-serif')
-textEl.setAttribute('text-anchor', 'middle')
-textEl.setAttribute('dominant-baseline', 'hanging')
-textEl.setAttribute('fill', 'black')
-svg.appendChild(textEl)
-
 const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+// 将 opentype 坐标（Y 轴向上）变换到 SVG 坐标（Y 轴向下），与物理体世界坐标对齐
+// 物理世界: worldX = opentypeX + offsetX, worldY = -opentypeY + centerY
+// SVG: svgX = worldX * SCALE, svgY = (HEIGHT - worldY) * SCALE
+// 合并: svgX = (opentypeX + offsetX) * SCALE, svgY = (HEIGHT - centerY + opentypeY) * SCALE
+g.setAttribute(
+  'transform',
+  `translate(${trajectoryRes.offsetX * SCALE}, ${(HEIGHT - trajectoryRes.centerY) * SCALE}) scale(${SCALE})`
+)
 svg.appendChild(g)
-g.style.transform = `scale(${SCALE}) translate(0, ${TEXT_TOP}px)`
 
 trajectoryRes.textPaths.forEach(({ pathData, rect }) => {
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')

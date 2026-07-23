@@ -38,4 +38,8 @@ export interface SimulationResult {
   contributions: ContributionJson[]
   /** 用户名文字碰撞体的三角网格（世界坐标），用于 web 端渲染 */
   textTriangles: number[][]
+  /** 文字在物理世界中的 X 偏移量 */
+  offsetX: number
+  /** 文字在物理世界中的 Y 偏移量 */
+  centerY: number
 }

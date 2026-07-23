@@ -1,6 +1,6 @@
 import { startSimulation } from './server/physics'
 import type { ContributionJson, SimulationResult } from './utils'
-import { FONT_SIZE, HEIGHT, SCALE, SIZE, TEXT, TEXT_TOP, WIDTH } from './utils'
+import { HEIGHT, SCALE, SIZE, WIDTH } from './utils'
 
 export interface GensvgOptions {
   username: string
@@ -54,18 +54,16 @@ export async function gensvg({
     })
     .join('\n')
 
-  const textSvg = `
-    <text
-      x="${(WIDTH / 2) * SCALE}"
-      y="${TEXT_TOP * SCALE}"
-      font-size="${FONT_SIZE}"
-      font-family="ArialCustom, sans-serif"
-      text-anchor="middle"
-      dominant-baseline="hanging"
-      fill="black"
-    >
-      ${TEXT}
-    </text>`
+  // 用 path 渲染文字路径，与物理碰撞体坐标对齐
+  // opentype 坐标 → SVG 坐标: svgX = (opentypeX + offsetX) * SCALE, svgY = (HEIGHT - centerY + opentypeY) * SCALE
+  const textPathsSvg = result.textPaths
+    .map(({ pathData }) => `    <path d="${pathData}" fill="black" />`)
+    .join('\n')
+
+  const textGroupSvg = `
+  <g transform="translate(${result.offsetX * SCALE}, ${(HEIGHT - result.centerY) * SCALE}) scale(${SCALE})">
+${textPathsSvg}
+  </g>`
 
   const svg = `<svg
   xmlns="http://www.w3.org/2000/svg"
@@ -73,15 +71,8 @@ export async function gensvg({
   height="${svgHeight}"
   viewBox="0 0 ${svgWidth} ${svgHeight}"
 >
-  <style>
-    @font-face {
-      font-family: "ArialCustom";
-      src: url("/assets/ARIAL.ttf") format("truetype");
-    }
-    </style>
 ${contributionsSvg}
-${textSvg}
+${textGroupSvg}
 </svg>`
-
   return svg
 }

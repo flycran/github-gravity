@@ -239,6 +239,8 @@ export async function startSimulation(
       pathData: pathData,
       rect: rect
     })),
-    textTriangles
+    textTriangles,
+    offsetX,
+    centerY
   }
 }
