@@ -51,4 +51,17 @@ function createContribution(contribution: ContributionJson) {
 
 trajectoryRes.contributions.forEach(createContribution)
 
+// 用三角网格渲染用户名文字（与物理碰撞体完全一致）
+for (const tri of trajectoryRes.textTriangles) {
+  const [x0, y0, x1, y1, x2, y2] = tri
+  const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon')
+  poly.setAttribute(
+    'points',
+    `${(x0 * SCALE).toFixed(1)},${((HEIGHT - y0) * SCALE).toFixed(1)} ${(x1 * SCALE).toFixed(1)},${((HEIGHT - y1) * SCALE).toFixed(1)} ${(x2 * SCALE).toFixed(1)},${((HEIGHT - y2) * SCALE).toFixed(1)}`
+  )
+  poly.setAttribute('fill', '#333')
+  poly.setAttribute('opacity', '0.3')
+  svg.appendChild(poly)
+}
+
 export {}

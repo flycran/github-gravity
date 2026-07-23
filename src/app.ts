@@ -1,8 +1,9 @@
 import { gensvg } from './gensvg'
 import { startSimulation } from './server/physics'
+import { TEXT } from './utils'
 import pageApp from './web/index.html'
 
-const res = await startSimulation('flycran')
+const res = await startSimulation('yyx990803')
 
 Bun.serve({
   port: 3000,

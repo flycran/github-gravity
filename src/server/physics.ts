@@ -18,6 +18,7 @@ import {
   INTENSITY_COLORS,
   RawContributionDay
 } from './github-contributions'
+import { getTextPaths } from './parseTextPath'
 
 export class Contribution implements ContributionJson {
   date: string
@@ -96,6 +97,35 @@ export async function startSimulation(
 ): Promise<SimulationResult> {
   const world = await createWord()
   const contributionsSet = new Set<Contribution>()
+
+  // 创建用户名文字静止刚体（居中对齐），同时收集三角网格数据
+  const textPaths = getTextPaths(username)
+  const totalWidth = textPaths.reduce((sum, { rect }) => sum + rect.width, 0)
+  const offsetX = (WIDTH - totalWidth) / 2
+  const centerY = HEIGHT / 2
+  const textTriangles: number[][] = []
+
+  for (const { paths } of textPaths) {
+    const { vertices, indices } = paths
+    const cx = offsetX
+    world.createCollider(
+      ColliderDesc.trimesh(vertices, indices),
+      world.createRigidBody(RigidBodyDesc.fixed().setTranslation(cx, centerY))
+    )
+    for (let i = 0; i < indices.length; i += 3) {
+      const i0 = indices[i] * 2,
+        i1 = indices[i + 1] * 2,
+        i2 = indices[i + 2] * 2
+      textTriangles.push([
+        cx + vertices[i0],
+        centerY + vertices[i0 + 1],
+        cx + vertices[i1],
+        centerY + vertices[i1 + 1],
+        cx + vertices[i2],
+        centerY + vertices[i2 + 1]
+      ])
+    }
+  }
 
   function createContribution(
     contributionDay: RawContributionDay,
@@ -180,6 +210,7 @@ export async function startSimulation(
     time: endTime - startTime,
     contributions: Array.from(contributionsSet).map((contribution) =>
       contribution.toJSON()
-    )
+    ),
+    textTriangles
   }
 }

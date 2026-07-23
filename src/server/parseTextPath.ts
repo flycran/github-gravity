@@ -1,6 +1,7 @@
 import earcut from 'earcut'
 import opentype from 'opentype.js'
 import { pointsOnPath } from 'points-on-path'
+import { FONT_SIZE, SCALE } from '../utils'
 
 function svgPathToRapierTrimesh(path: string, scale = 1, tolerance = 1) {
   // pointsOnPath returns Point[][] — one array per sub-path, flatten them
@@ -40,7 +41,7 @@ export interface TextPathResult {
 }
 
 export function getTextPaths(text: string): TextPathResult[] {
-  const paths = font.getPaths(text, 0, 0, 80)
+  const paths = font.getPaths(text, 0, 0, FONT_SIZE / SCALE)
 
   return paths.map((path) => {
     const bbox = path.getBoundingBox()
