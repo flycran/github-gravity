@@ -23,7 +23,7 @@ export async function run(): Promise<void> {
     const outputPath: string = core.getInput('output-path') || 'gravity.svg'
     const fontSize: number = parseInt(core.getInput('font-size') || '80', 10)
     const sampleRate: number = parseInt(core.getInput('sample-rate') || '4', 10)
-    const shape: string = core.getInput('shape') || 'circle'
+    const shape = (core.getInput('shape') as 'square' | 'circle') || 'circle'
     const textTop: number = parseInt(core.getInput('text-top') || '50', 10)
     const backgroundColor: string =
       core.getInput('background-color') || 'transparent'
