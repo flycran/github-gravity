@@ -65,11 +65,11 @@ jobs:
         with:
           username: Orta
           text: Orta Therox
-          output-path: gravity.svg
+          output-path: deploy/gravity.svg
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: .
+          publish_dir: ./deploy
           publish_branch: output
           keep_files: false
           force_orphan: true
