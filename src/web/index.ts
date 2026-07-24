@@ -11,6 +11,16 @@ svg.style.width = WIDTH * SCALE + 'px'
 svg.style.height = HEIGHT * SCALE + 'px'
 svg.setAttribute('viewBox', `0 0 ${svg.style.width} ${svg.style.height}`)
 
+// 背景
+const background = document.createElementNS(
+  'http://www.w3.org/2000/svg',
+  'rect'
+)
+background.setAttribute('width', `${WIDTH * SCALE}`)
+background.setAttribute('height', `${HEIGHT * SCALE}`)
+background.setAttribute('fill', trajectoryRes.backgroundColor)
+svg.appendChild(background)
+
 function createContribution(contribution: ContributionJson) {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
   svg.appendChild(g)
@@ -90,7 +100,7 @@ svg.appendChild(g)
 trajectoryRes.textPaths.forEach(({ pathData }) => {
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
   path.setAttribute('d', pathData)
-  path.setAttribute('fill', 'black')
+  path.setAttribute('fill', trajectoryRes.textColor)
   g.appendChild(path)
 })
 

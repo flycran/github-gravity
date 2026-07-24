@@ -37,6 +37,8 @@
 | `sample-rate` | ❌ | `4` | 轨迹采样率（越大文件越小，动画越不流畅） |
 | `shape` | ❌ | `circle` | 贡献方块的形状（`circle` 或 `square`） |
 | `text-top` | ❌ | `50` | 文字距离世界顶部的距离，控制文字垂直位置 |
+| `background-color` | ❌ | `transparent` | SVG 背景颜色（CSS 颜色值） |
+| `text-color` | ❌ | `black` | 碰撞文字颜色（CSS 颜色值） |
 
 ### 输出
 

@@ -37,6 +37,8 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 | `sample-rate` | ❌ | `4` | Trajectory sample rate (higher = smaller SVG, less smooth animation) |
 | `shape` | ❌ | `circle` | Shape of contribution blocks: `circle` or `square` |
 | `text-top` | ❌ | `50` | Distance from the top of the world to the text |
+| `background-color` | ❌ | `transparent` | Background color of the SVG (CSS color value) |
+| `text-color` | ❌ | `black` | Color of the collision text (CSS color value) |
 
 ### Outputs
 

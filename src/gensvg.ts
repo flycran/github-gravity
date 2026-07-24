@@ -10,6 +10,8 @@ import { HEIGHT, SCALE, SIZE, WIDTH } from './utils'
  * @returns 完整的 SVG 字符串
  */
 export async function gensvg(options: SimulationOptions): Promise<string> {
+  const backgroundColor = options.backgroundColor || 'transparent'
+  const textColor = options.textColor || 'black'
   const result: SimulationResult = await startSimulation(options)
 
   const svgWidth = WIDTH * SCALE
@@ -57,7 +59,7 @@ export async function gensvg(options: SimulationOptions): Promise<string> {
   // 用 path 渲染文字路径，与物理碰撞体坐标对齐
   // opentype 坐标 → SVG 坐标: svgX = (opentypeX + offsetX) * SCALE, svgY = (HEIGHT - centerY + opentypeY) * SCALE
   const textPathsSvg = result.textPaths
-    .map(({ pathData }) => `    <path d="${pathData}" fill="black" />`)
+    .map(({ pathData }) => `    <path d="${pathData}" fill="${textColor}" />`)
     .join('\n')
 
   const textGroupSvg = `
@@ -71,6 +73,7 @@ ${textPathsSvg}
   height="${svgHeight}"
   viewBox="0 0 ${svgWidth} ${svgHeight}"
 >
+  <rect width="${svgWidth}" height="${svgHeight}" fill="${backgroundColor}" />
 ${contributionsSvg}
 ${textGroupSvg}
 </svg>`

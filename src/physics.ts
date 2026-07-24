@@ -113,6 +113,10 @@ export interface SimulationOptions {
   sampleRate?: number
   /** 贡献方块的形状：circle（圆形）或 square（方形）。圆形物理模拟更丝滑，不容易穿模。 */
   shape?: string
+  /** 背景颜色，默认透明 */
+  backgroundColor?: string
+  /** 文字颜色，默认黑色 */
+  textColor?: string
 }
 
 export async function startSimulation({
@@ -122,7 +126,9 @@ export async function startSimulation({
   fontSize = 80,
   stepTime = 8,
   sampleRate = 4,
-  shape = 'circle'
+  shape = 'circle',
+  backgroundColor = 'transparent',
+  textColor = 'black'
 }: SimulationOptions): Promise<SimulationResult> {
   const world = await createWord()
   const contributionsSet = new Set<Contribution>()
@@ -270,6 +276,8 @@ export async function startSimulation({
     textTriangles,
     offsetX,
     centerY,
-    stepTime
+    stepTime,
+    backgroundColor,
+    textColor
   }
 }

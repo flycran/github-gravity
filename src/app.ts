@@ -16,7 +16,9 @@ Bun.serve({
         await startSimulation({
           username: GITHUB_ID,
           text: TEXT,
-          sampleRate: 8
+          sampleRate: 8,
+          backgroundColor: '#fff',
+          textColor: '#eb510a'
         })
       )
     },

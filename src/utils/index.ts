@@ -44,4 +44,8 @@ export interface SimulationResult {
   centerY: number
   /** 一步的时间（ms） */
   stepTime: number
+  /** 背景颜色 */
+  backgroundColor: string
+  /** 文字颜色 */
+  textColor: string
 }

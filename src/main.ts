@@ -24,10 +24,13 @@ export async function run(): Promise<void> {
     const sampleRate: number = parseInt(core.getInput('sample-rate') || '4', 10)
     const shape: string = core.getInput('shape') || 'circle'
     const textTop: number = parseInt(core.getInput('text-top') || '50', 10)
+    const backgroundColor: string =
+      core.getInput('background-color') || 'transparent'
+    const textColor: string = core.getInput('text-color') || 'black'
 
     core.info(`Generating gravity SVG for user: ${username}`)
     core.info(
-      `Text: "${text}", Font size: ${fontSize}, Sample rate: ${sampleRate}, Shape: ${shape}, Text top: ${textTop}`
+      `Text: "${text}", Font size: ${fontSize}, Sample rate: ${sampleRate}, Shape: ${shape}, Text top: ${textTop}, Background: ${backgroundColor}, Text color: ${textColor}`
     )
 
     const svg = await gensvg({
@@ -36,7 +39,9 @@ export async function run(): Promise<void> {
       fontSize,
       sampleRate,
       shape,
-      textTop
+      textTop,
+      backgroundColor,
+      textColor
     })
 
     writeFileSync(outputPath, svg, 'utf-8')
