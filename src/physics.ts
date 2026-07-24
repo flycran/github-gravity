@@ -112,7 +112,7 @@ export interface SimulationOptions {
   /** 轨迹采样率，每隔 N 步记录一个轨迹点。默认为 1（不采样）。值越大，SVG 越小 */
   sampleRate?: number
   /** 贡献方块的形状：circle（圆形）或 square（方形）。圆形物理模拟更丝滑，不容易穿模。 */
-  shape?: string
+  shape?: 'circle' | 'square'
   /** 背景颜色，默认透明 */
   backgroundColor?: string
   /** 文字颜色，默认黑色 */
