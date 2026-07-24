@@ -1,4 +1,4 @@
-import { SimulationOptions, startSimulation } from './server/physics'
+import { SimulationOptions, startSimulation } from './physics'
 import type { ContributionJson, SimulationResult } from './utils'
 import { HEIGHT, SCALE, SIZE, WIDTH } from './utils'
 

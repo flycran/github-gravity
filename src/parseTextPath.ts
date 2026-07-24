@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import earcut from 'earcut'
 import * as opentype from 'opentype.js'
 import { pointsOnPath } from 'points-on-path'
-import { SCALE, TextPathResult } from '../utils'
+import { SCALE, TextPathResult } from './utils'
 
 function svgPathToRapierTrimesh(path: string, scale = 1, tolerance = 1) {
   const subPaths = pointsOnPath(path, tolerance)
@@ -26,7 +26,7 @@ function svgPathToRapierTrimesh(path: string, scale = 1, tolerance = 1) {
 const font = opentype.parse(
   readFileSync(
     fileURLToPath(
-      new URL('../assets/LiberationSerif-Bold.ttf', import.meta.url)
+      new URL('../public/LiberationSerif-Bold.ttf', import.meta.url)
     )
   ).buffer as ArrayBuffer
 )

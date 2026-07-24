@@ -6,19 +6,19 @@ import {
   World
 } from '@dimforge/rapier2d-compat'
 import {
+  fetchContributions,
+  INTENSITY_COLORS,
+  RawContributionDay
+} from './github-contributions'
+import { getTextPaths } from './parseTextPath'
+import {
   ContributionJson,
   HEIGHT,
   INTERVAL,
   SIZE,
   SimulationResult,
   WIDTH
-} from '../utils'
-import {
-  fetchContributions,
-  INTENSITY_COLORS,
-  RawContributionDay
-} from './github-contributions'
-import { getTextPaths } from './parseTextPath'
+} from './utils'
 
 export class Contribution implements ContributionJson {
   date: string

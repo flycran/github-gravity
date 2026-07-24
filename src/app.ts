@@ -1,5 +1,5 @@
 import { gensvg } from './gensvg'
-import { startSimulation } from './server/physics'
+import { startSimulation } from './physics'
 import { GITHUB_ID, TEXT } from './utils'
 import pageApp from './web/index.html'
 

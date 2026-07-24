@@ -36,5 +36,8 @@ export default {
       }
     ]
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!(points-on-path|points-on-curve|earcut)/)'
+  ],
   verbose: true
 }

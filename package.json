@@ -22,7 +22,7 @@
   },
   "scripts": {
     "bundle": "bun biome check --write . && npm run package",
-    "ci-test": "NODE_OPTIONS=--experimental-vm-modules NODE_NO_WARNINGS=1 npx jest",
+    "ci-test": "bun test",
     "coverage": "npx make-coverage-badge --output-path ./badges/coverage.svg",
     "format:write": "bun biome format --write .",
     "format:check": "bun biome format .",
@@ -31,7 +31,7 @@
     "local-action": "npx @github/local-action . src/main.ts .env",
     "package": "npx rimraf ./dist && npx rollup --config rollup.config.ts --configPlugin @rollup/plugin-typescript",
     "package:watch": "npm run package -- --watch",
-    "test": "NODE_OPTIONS=--experimental-vm-modules NODE_NO_WARNINGS=1 npx jest",
+    "test": "bun test",
     "all": "bun biome check --write . && npm run test && npm run coverage && npm run package"
   },
   "license": "MIT",
@@ -57,7 +57,6 @@
     "jest": "^30.2.0",
     "make-coverage-badge": "^1.2.0",
     "rollup": "^4.57.1",
-    "rollup-plugin-copy": "^3.5.0",
     "ts-jest": "^29.4.6",
     "ts-jest-resolver": "^2.0.1",
     "typescript": "^5.9.3"
