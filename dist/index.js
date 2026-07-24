@@ -28021,8 +28021,6 @@ const HEIGHT = 150;
 const SCALE = 3;
 const SIZE = 4;
 const INTERVAL = 1.5;
-const FONT_SIZE = 80;
-const TEXT_TOP = 50;
 
 /**
  * 通过 gh-calendar API 获取 GitHub 用户贡献图数据。
@@ -45335,7 +45333,7 @@ async function createWord() {
 }
 /** 速度小于此阈值视为静止 */
 const VELOCITY_THRESHOLD = 1e-3;
-async function startSimulation({ username, text = username, fontSize = FONT_SIZE, sampleRate = 4, shape = 'circle' }) {
+async function startSimulation({ username, text = username, textTop = 50, fontSize = 80, stepTime = 8, sampleRate = 4, shape = 'circle' }) {
     const world = await createWord();
     const contributionsSet = new Set();
     // 创建用户名文字静止刚体（居中对齐），同时收集三角网格数据
@@ -45356,7 +45354,7 @@ async function startSimulation({ username, text = username, fontSize = FONT_SIZE
     const bboxCenterX = (minX + maxX) / 2;
     const offsetX = WIDTH / 2 - bboxCenterX;
     // 文字顶部距离世界顶部的距离
-    const centerY = HEIGHT - TEXT_TOP - maxY;
+    const centerY = HEIGHT - textTop - maxY;
     const textTriangles = [];
     for (const { paths } of textPaths) {
         const { vertices, indices } = paths;
@@ -45447,7 +45445,8 @@ async function startSimulation({ username, text = username, fontSize = FONT_SIZE
         })),
         textTriangles,
         offsetX,
-        centerY
+        centerY,
+        stepTime
     };
 }
 
@@ -45458,14 +45457,8 @@ async function startSimulation({ username, text = username, fontSize = FONT_SIZE
  * @param options - 包含 GitHub 用户名
  * @returns 完整的 SVG 字符串
  */
-async function gensvg({ username, text, fontSize, sampleRate, shape }) {
-    const result = await startSimulation({
-        username,
-        text,
-        fontSize,
-        sampleRate,
-        shape
-    });
+async function gensvg(options) {
+    const result = await startSimulation(options);
     const svgWidth = WIDTH * SCALE;
     const svgHeight = HEIGHT * SCALE;
     // 生成每个贡献方块的 SVG 元素
@@ -45495,7 +45488,7 @@ async function gensvg({ username, text, fontSize, sampleRate, shape }) {
       attributeType="XML"
       type="translate"
       values="${values}"
-      dur="${result.stepCount * 8}ms"
+      dur="${result.stepCount * result.stepTime}ms"
       fill="freeze"
     />
   </g>`;
@@ -45543,14 +45536,16 @@ async function run() {
         const fontSize = parseInt(getInput('font-size') || '80', 10);
         const sampleRate = parseInt(getInput('sample-rate') || '4', 10);
         const shape = getInput('shape') || 'circle';
+        const textTop = parseInt(getInput('text-top') || '50', 10);
         info(`Generating gravity SVG for user: ${username}`);
-        info(`Text: "${text}", Font size: ${fontSize}, Sample rate: ${sampleRate}, Shape: ${shape}`);
+        info(`Text: "${text}", Font size: ${fontSize}, Sample rate: ${sampleRate}, Shape: ${shape}, Text top: ${textTop}`);
         const svg = await gensvg({
             username,
             text,
             fontSize,
             sampleRate,
-            shape
+            shape,
+            textTop
         });
         writeFileSync(outputPath, svg, 'utf-8');
         info(`SVG written to: ${outputPath}`);
