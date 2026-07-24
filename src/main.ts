@@ -22,17 +22,21 @@ export async function run(): Promise<void> {
     const outputPath: string = core.getInput('output-path') || 'gravity.svg'
     const fontSize: number = parseInt(core.getInput('font-size') || '80', 10)
     const sampleRate: number = parseInt(core.getInput('sample-rate') || '4', 10)
+    const shape: string = core.getInput('shape') || 'circle'
+    const textTop: number = parseInt(core.getInput('text-top') || '50', 10)
 
     core.info(`Generating gravity SVG for user: ${username}`)
     core.info(
-      `Text: "${text}", Font size: ${fontSize}, Sample rate: ${sampleRate}`
+      `Text: "${text}", Font size: ${fontSize}, Sample rate: ${sampleRate}, Shape: ${shape}, Text top: ${textTop}`
     )
 
     const svg = await gensvg({
       username,
       text,
       fontSize,
-      sampleRate
+      sampleRate,
+      shape,
+      textTop
     })
 
     writeFileSync(outputPath, svg, 'utf-8')

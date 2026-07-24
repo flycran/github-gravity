@@ -25,6 +25,14 @@ inputs:
     description: Trajectory sample rate (higher = smaller SVG, less smooth animation)
     required: false
     default: '4'
+  shape:
+    description: Shape of the contribution blocks (circle or square). Circle has smoother physics and less likely to clip through obstacles.
+    required: false
+    default: circle
+  text-top:
+    description: Distance from the top of the world to the text (controls vertical text position)
+    required: false
+    default: '50'
 
 outputs:
   svg-path:

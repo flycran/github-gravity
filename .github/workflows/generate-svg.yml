@@ -1,0 +1,47 @@
+name: Daily Gravity SVG
+
+on:
+  schedule:
+    # 每天 UTC 0:00 运行（北京时间 8:00）
+    - cron: '0 0 * * *'
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  generate-and-deploy:
+    name: Generate SVG & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup mise
+        uses: jdx/mise-action@v2
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Bundle
+        run: npm run bundle
+
+      - name: Generate Gravity SVG
+        uses: ./
+        with:
+          username: Orta
+          text: Orta Therox
+          output-path: gravity.svg
+          sample-rate: '8'
+
+      - name: Deploy to output branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          publish_branch: output
+          keep_files: false
+          force_orphan: true
