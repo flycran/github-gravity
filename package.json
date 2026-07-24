@@ -1,7 +1,7 @@
 {
   "name": "github-gravity",
   "description": "Generate an animated SVG of your GitHub contribution graph falling under gravity, with custom text as collision obstacles",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "author": "flycran",
   "type": "module",
   "private": true,
