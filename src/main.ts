@@ -1,4 +1,5 @@
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import * as core from '@actions/core'
 import { gensvg } from './gensvg.js'
 
@@ -44,6 +45,7 @@ export async function run(): Promise<void> {
       textColor
     })
 
+    mkdirSync(dirname(outputPath), { recursive: true })
     writeFileSync(outputPath, svg, 'utf-8')
     core.info(`SVG written to: ${outputPath}`)
 

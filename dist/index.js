@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import * as os from 'os';
 import os__default from 'os';
 import * as crypto from 'crypto';
@@ -45333,7 +45334,7 @@ async function createWord() {
 }
 /** 速度小于此阈值视为静止 */
 const VELOCITY_THRESHOLD = 1e-3;
-async function startSimulation({ username, text = username, textTop = 50, fontSize = 80, stepTime = 8, sampleRate = 4, shape = 'circle' }) {
+async function startSimulation({ username, text = username, textTop = 50, fontSize = 80, stepTime = 8, sampleRate = 4, shape = 'circle', backgroundColor = 'transparent', textColor = 'black' }) {
     const world = await createWord();
     const contributionsSet = new Set();
     // 创建用户名文字静止刚体（居中对齐），同时收集三角网格数据
@@ -45446,7 +45447,9 @@ async function startSimulation({ username, text = username, textTop = 50, fontSi
         textTriangles,
         offsetX,
         centerY,
-        stepTime
+        stepTime,
+        backgroundColor,
+        textColor
     };
 }
 
@@ -45458,6 +45461,8 @@ async function startSimulation({ username, text = username, textTop = 50, fontSi
  * @returns 完整的 SVG 字符串
  */
 async function gensvg(options) {
+    const backgroundColor = options.backgroundColor || 'transparent';
+    const textColor = options.textColor || 'black';
     const result = await startSimulation(options);
     const svgWidth = WIDTH * SCALE;
     const svgHeight = HEIGHT * SCALE;
@@ -45497,7 +45502,7 @@ async function gensvg(options) {
     // 用 path 渲染文字路径，与物理碰撞体坐标对齐
     // opentype 坐标 → SVG 坐标: svgX = (opentypeX + offsetX) * SCALE, svgY = (HEIGHT - centerY + opentypeY) * SCALE
     const textPathsSvg = result.textPaths
-        .map(({ pathData }) => `    <path d="${pathData}" fill="black" />`)
+        .map(({ pathData }) => `    <path d="${pathData}" fill="${textColor}" />`)
         .join('\n');
     const textGroupSvg = `
   <g transform="translate(${result.offsetX * SCALE}, ${(HEIGHT - result.centerY) * SCALE}) scale(${SCALE})">
@@ -45509,6 +45514,7 @@ ${textPathsSvg}
   height="${svgHeight}"
   viewBox="0 0 ${svgWidth} ${svgHeight}"
 >
+  <rect width="${svgWidth}" height="${svgHeight}" fill="${backgroundColor}" />
 ${contributionsSvg}
 ${textGroupSvg}
 </svg>`;
@@ -45537,16 +45543,21 @@ async function run() {
         const sampleRate = parseInt(getInput('sample-rate') || '4', 10);
         const shape = getInput('shape') || 'circle';
         const textTop = parseInt(getInput('text-top') || '50', 10);
+        const backgroundColor = getInput('background-color') || 'transparent';
+        const textColor = getInput('text-color') || 'black';
         info(`Generating gravity SVG for user: ${username}`);
-        info(`Text: "${text}", Font size: ${fontSize}, Sample rate: ${sampleRate}, Shape: ${shape}, Text top: ${textTop}`);
+        info(`Text: "${text}", Font size: ${fontSize}, Sample rate: ${sampleRate}, Shape: ${shape}, Text top: ${textTop}, Background: ${backgroundColor}, Text color: ${textColor}`);
         const svg = await gensvg({
             username,
             text,
             fontSize,
             sampleRate,
             shape,
-            textTop
+            textTop,
+            backgroundColor,
+            textColor
         });
+        mkdirSync(dirname(outputPath), { recursive: true });
         writeFileSync(outputPath, svg, 'utf-8');
         info(`SVG written to: ${outputPath}`);
         setOutput('svg-path', outputPath);
