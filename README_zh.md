@@ -52,6 +52,9 @@
 name: Generate Contribution Gravity
 
 on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
   push:
     branches:
       - main

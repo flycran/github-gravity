@@ -52,6 +52,9 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 name: Generate Contribution Gravity
 
 on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
   push:
     branches:
       - main
