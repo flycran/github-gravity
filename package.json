@@ -1,19 +1,27 @@
 {
   "name": "github-gravity",
-  "description": "GitHub Actions TypeScript template",
+  "description": "Generate an animated SVG of your GitHub contribution graph falling under gravity, with custom text as collision obstacles",
   "version": "0.0.0",
-  "author": "",
+  "author": "flycran",
   "type": "module",
   "private": true,
-  "homepage": "https://github.com/actions/typescript-action",
+  "homepage": "https://github.com/flycran/github-gravity#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/actions/typescript-action.git"
+    "url": "git+https://github.com/flycran/github-gravity.git"
   },
   "bugs": {
-    "url": "https://github.com/actions/typescript-action/issues"
+    "url": "https://github.com/flycran/github-gravity/issues"
   },
-  "keywords": ["actions"],
+  "keywords": [
+    "actions",
+    "github-actions",
+    "svg",
+    "animation",
+    "gravity",
+    "physics",
+    "contributions"
+  ],
   "exports": {
     ".": "./dist/index.js"
   },
