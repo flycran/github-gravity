@@ -29,8 +29,7 @@ Bun.serve({
       return new Response(svg, {
         headers: { 'Content-Type': 'image/svg+xml' }
       })
-    },
-    '/assets/ARIAL.ttf': Bun.file('src/assets/ARIAL.ttf')
+    }
   }
 })
 

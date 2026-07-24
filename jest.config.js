@@ -31,7 +31,7 @@ export default {
     '^.+\\.ts$': [
       'ts-jest',
       {
-        tsconfig: 'tsconfig.jest.json',
+        tsconfig: 'tsconfig.bun.json',
         useESM: true
       }
     ]

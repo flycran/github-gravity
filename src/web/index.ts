@@ -16,18 +16,28 @@ function createContribution(contribution: ContributionJson) {
   svg.appendChild(g)
   g.setAttribute('data-date', contribution.date)
 
-  const rect = document.createElementNS(
-    'http://www.w3.org/2000/svg',
-    'rect'
-  ) as SVGRectElement
+  const isCircle = trajectoryRes.shape === 'circle'
 
-  rect.setAttribute('width', `${SIZE * SCALE}`)
-  rect.setAttribute('height', `${SIZE * SCALE}`)
-  rect.setAttribute('x', `-${(SIZE / 2) * SCALE}`)
-  rect.setAttribute('y', `-${(SIZE / 2) * SCALE}`)
-  rect.setAttribute('fill', contribution.color)
-
-  g.appendChild(rect)
+  if (isCircle) {
+    const circle = document.createElementNS(
+      'http://www.w3.org/2000/svg',
+      'circle'
+    ) as SVGCircleElement
+    circle.setAttribute('r', `${(SIZE / 2) * SCALE}`)
+    circle.setAttribute('fill', contribution.color)
+    g.appendChild(circle)
+  } else {
+    const rect = document.createElementNS(
+      'http://www.w3.org/2000/svg',
+      'rect'
+    ) as SVGRectElement
+    rect.setAttribute('x', `${-(SIZE / 2) * SCALE}`)
+    rect.setAttribute('y', `${-(SIZE / 2) * SCALE}`)
+    rect.setAttribute('width', `${SIZE * SCALE}`)
+    rect.setAttribute('height', `${SIZE * SCALE}`)
+    rect.setAttribute('fill', contribution.color)
+    g.appendChild(rect)
+  }
 
   const animateTransform = document.createElementNS(
     'http://www.w3.org/2000/svg',
@@ -43,7 +53,10 @@ function createContribution(contribution: ContributionJson) {
       .map(({ x, y }) => `${x * SCALE},${(HEIGHT - y) * SCALE}`)
       .join(';')
   )
-  animateTransform.setAttribute('dur', `${trajectoryRes.stepCount * 8}ms`)
+  animateTransform.setAttribute(
+    'dur',
+    `${trajectoryRes.stepCount * trajectoryRes.stepTime}ms`
+  )
   animateTransform.setAttribute('fill', 'freeze')
 
   g.appendChild(animateTransform)
@@ -74,7 +87,7 @@ g.setAttribute(
 )
 svg.appendChild(g)
 
-trajectoryRes.textPaths.forEach(({ pathData, rect }) => {
+trajectoryRes.textPaths.forEach(({ pathData }) => {
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
   path.setAttribute('d', pathData)
   path.setAttribute('fill', 'black')

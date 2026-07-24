@@ -45252,10 +45252,8 @@ function pointsOnPath(path, tolerance, distance) {
 }
 
 function svgPathToRapierTrimesh(path, scale = 1, tolerance = 1) {
-    // pointsOnPath returns Point[][] — one array per sub-path, flatten them
     const subPaths = pointsOnPath(path, tolerance);
     const points = subPaths.flat();
-    // Point is [number, number], scale each coordinate
     const vertices = points.map(([x, y]) => [x * scale, y * scale]);
     const flatVertices = vertices.flat();
     const indices = earcut(flatVertices);
@@ -45264,10 +45262,7 @@ function svgPathToRapierTrimesh(path, scale = 1, tolerance = 1) {
         indices: new Uint32Array(indices)
     };
 }
-// 字体文件路径：优先使用环境变量，否则使用默认路径
-const FONT_PATH = process.env.GRAVITY_FONT_PATH ||
-    fileURLToPath(new URL('../assets/ARIAL.ttf', import.meta.url));
-const font = parseBuffer(readFileSync(FONT_PATH).buffer);
+const font = parseBuffer(readFileSync(fileURLToPath(new URL('../assets/LiberationSerif-Bold.ttf', import.meta.url))).buffer);
 function getTextPaths(text, fontSize) {
     const paths = font.getPaths(text, 0, 0, fontSize / SCALE);
     return paths.map((path) => {
@@ -45330,7 +45325,7 @@ async function createWord() {
     await Jg();
     // 重力
     const world = new Eg({ x: 0.0, y: -30 });
-    world.lengthUnit = 16;
+    world.lengthUnit = 32;
     // 地面
     world.createCollider(wg.cuboid(WIDTH, 1), world.createRigidBody(BI.fixed().setTranslation(0, -1)));
     // 墙壁
@@ -45340,7 +45335,7 @@ async function createWord() {
 }
 /** 速度小于此阈值视为静止 */
 const VELOCITY_THRESHOLD = 1e-3;
-async function startSimulation({ username, text = username, fontSize = FONT_SIZE, sampleRate = 4 }) {
+async function startSimulation({ username, text = username, fontSize = FONT_SIZE, sampleRate = 4, shape = 'circle' }) {
     const world = await createWord();
     const contributionsSet = new Set();
     // 创建用户名文字静止刚体（居中对齐），同时收集三角网格数据
@@ -45373,7 +45368,9 @@ async function startSimulation({ username, text = username, fontSize = FONT_SIZE
             flippedVertices[i] = vertices[i];
             flippedVertices[i + 1] = -vertices[i + 1];
         }
-        world.createCollider(wg.trimesh(flippedVertices, indices), world.createRigidBody(BI.fixed().setTranslation(offsetX, centerY)));
+        world.createCollider(wg.trimesh(flippedVertices, indices), world.createRigidBody(BI.fixed()
+            .setCcdEnabled(true)
+            .setTranslation(offsetX, centerY)));
         for (let i = 0; i < indices.length; i += 3) {
             const i0 = indices[i] * 2, i1 = indices[i + 1] * 2, i2 = indices[i + 2] * 2;
             textTriangles.push([
@@ -45385,11 +45382,6 @@ async function startSimulation({ username, text = username, fontSize = FONT_SIZE
                 centerY + flippedVertices[i2 + 1]
             ]);
         }
-    }
-    function createContribution(contributionDay, x, y) {
-        // 动态刚体
-        const boxCollider = world.createCollider(wg.cuboid(SIZE / 2, SIZE / 2).setFriction(0.2), world.createRigidBody(BI.dynamic().setCcdEnabled(true).setTranslation(x, y)));
-        contributionsSet.add(new Contribution(contributionDay, boxCollider, sampleRate));
     }
     const githubContributions = await fetchContributions(username);
     const rowLen = githubContributions.contributions.length;
@@ -45405,7 +45397,14 @@ async function startSimulation({ username, text = username, fontSize = FONT_SIZE
             }
             const dayOfWeek = new Date(contributionDay.date).getDay();
             if (contributionDay.count) {
-                createContribution(contributionDay, left + (INTERVAL + SIZE) * rowIndex, top + (INTERVAL + SIZE) * dayOfWeek);
+                const x = left + (INTERVAL + SIZE) * rowIndex;
+                const y = top + (INTERVAL + SIZE) * dayOfWeek;
+                // 动态刚体：圆形物理模拟更丝滑，不容易穿模
+                const colliderDesc = shape === 'square'
+                    ? wg.cuboid(SIZE / 2, SIZE / 2).setFriction(0.2)
+                    : wg.ball(SIZE / 2).setFriction(0.2);
+                const boxCollider = world.createCollider(colliderDesc, world.createRigidBody(BI.dynamic().setCcdEnabled(true).setTranslation(x, y)));
+                contributionsSet.add(new Contribution(contributionDay, boxCollider, sampleRate));
             }
         }
     }
@@ -45440,6 +45439,7 @@ async function startSimulation({ username, text = username, fontSize = FONT_SIZE
     return {
         stepCount,
         time: endTime - startTime,
+        shape,
         contributions: Array.from(contributionsSet).map((contribution) => contribution.toJSON()),
         textPaths: textPaths.map(({ pathData, rect }) => ({
             pathData: pathData,
@@ -45458,30 +45458,38 @@ async function startSimulation({ username, text = username, fontSize = FONT_SIZE
  * @param options - 包含 GitHub 用户名
  * @returns 完整的 SVG 字符串
  */
-async function gensvg({ username, text, fontSize, sampleRate }) {
+async function gensvg({ username, text, fontSize, sampleRate, shape }) {
     const result = await startSimulation({
         username,
         text,
         fontSize,
-        sampleRate
+        sampleRate,
+        shape
     });
     const svgWidth = WIDTH * SCALE;
     const svgHeight = HEIGHT * SCALE;
     // 生成每个贡献方块的 SVG 元素
+    const isCircle = result.shape === 'circle';
     const contributionsSvg = result.contributions
         .map((contribution) => {
         // 轨迹坐标转换：物理坐标 → SVG 坐标（Y 轴翻转）
         const values = contribution.trajectory
             .map(({ x, y }) => `${+(x * SCALE).toFixed(2)},${+((HEIGHT - y) * SCALE).toFixed(2)}`)
             .join(';');
-        return `  <g data-date="${contribution.date}">
-    <rect
+        const shapeElement = isCircle
+            ? `<circle
+      r="${(SIZE / 2) * SCALE}"
+      fill="${contribution.color}"
+    />`
+            : `<rect
+      x="${ -2 * SCALE}"
+      y="${ -2 * SCALE}"
       width="${SIZE * SCALE}"
       height="${SIZE * SCALE}"
-      x="-${(SIZE / 2) * SCALE}"
-      y="-${(SIZE / 2) * SCALE}"
       fill="${contribution.color}"
-    />
+    />`;
+        return `  <g data-date="${contribution.date}">
+    ${shapeElement}
     <animateTransform
       attributeName="transform"
       attributeType="XML"
@@ -45534,13 +45542,15 @@ async function run() {
         const outputPath = getInput('output-path') || 'gravity.svg';
         const fontSize = parseInt(getInput('font-size') || '80', 10);
         const sampleRate = parseInt(getInput('sample-rate') || '4', 10);
+        const shape = getInput('shape') || 'circle';
         info(`Generating gravity SVG for user: ${username}`);
-        info(`Text: "${text}", Font size: ${fontSize}, Sample rate: ${sampleRate}`);
+        info(`Text: "${text}", Font size: ${fontSize}, Sample rate: ${sampleRate}, Shape: ${shape}`);
         const svg = await gensvg({
             username,
             text,
             fontSize,
-            sampleRate
+            sampleRate,
+            shape
         });
         writeFileSync(outputPath, svg, 'utf-8');
         info(`SVG written to: ${outputPath}`);

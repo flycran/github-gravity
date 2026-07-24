@@ -67,6 +67,39 @@ describe('main.ts', () => {
     )
   })
 
+  it('passes shape parameter to gensvg', async () => {
+    core.getInput.mockImplementation((name: string) => {
+      if (name === 'username') return 'testuser'
+      if (name === 'shape') return 'square'
+      return ''
+    })
+
+    await run()
+
+    expect(mockGensvg).toHaveBeenCalledWith(
+      expect.objectContaining({
+        username: 'testuser',
+        shape: 'square'
+      })
+    )
+  })
+
+  it('defaults shape to circle when not provided', async () => {
+    core.getInput.mockImplementation((name: string) => {
+      if (name === 'username') return 'testuser'
+      return ''
+    })
+
+    await run()
+
+    expect(mockGensvg).toHaveBeenCalledWith(
+      expect.objectContaining({
+        username: 'testuser',
+        shape: 'circle'
+      })
+    )
+  })
+
   it('falls back to username when text is empty', async () => {
     core.getInput.mockImplementation((name: string) => {
       if (name === 'username') return 'testuser'

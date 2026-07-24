@@ -1,14 +1,6 @@
-import { startSimulation } from './server/physics'
+import { SimulationOptions, startSimulation } from './server/physics'
 import type { ContributionJson, SimulationResult } from './utils'
 import { HEIGHT, SCALE, SIZE, WIDTH } from './utils'
-
-export interface GensvgOptions {
-  username: string
-  text: string
-  fontSize?: number
-  /** 轨迹采样率，每隔 N 步记录一个轨迹点。默认为 1（不采样）。值越大，SVG 越小 */
-  sampleRate?: number
-}
 
 /**
  * 生成贡献方块重力模拟的 SVG 动画字符串。
@@ -17,23 +9,14 @@ export interface GensvgOptions {
  * @param options - 包含 GitHub 用户名
  * @returns 完整的 SVG 字符串
  */
-export async function gensvg({
-  username,
-  text,
-  fontSize,
-  sampleRate
-}: GensvgOptions): Promise<string> {
-  const result: SimulationResult = await startSimulation({
-    username,
-    text,
-    fontSize,
-    sampleRate
-  })
+export async function gensvg(options: SimulationOptions): Promise<string> {
+  const result: SimulationResult = await startSimulation(options)
 
   const svgWidth = WIDTH * SCALE
   const svgHeight = HEIGHT * SCALE
 
   // 生成每个贡献方块的 SVG 元素
+  const isCircle = result.shape === 'circle'
   const contributionsSvg = result.contributions
     .map((contribution: ContributionJson) => {
       // 轨迹坐标转换：物理坐标 → SVG 坐标（Y 轴翻转）
@@ -44,20 +27,27 @@ export async function gensvg({
         )
         .join(';')
 
-      return `  <g data-date="${contribution.date}">
-    <rect
+      const shapeElement = isCircle
+        ? `<circle
+      r="${(SIZE / 2) * SCALE}"
+      fill="${contribution.color}"
+    />`
+        : `<rect
+      x="${-(SIZE / 2) * SCALE}"
+      y="${-(SIZE / 2) * SCALE}"
       width="${SIZE * SCALE}"
       height="${SIZE * SCALE}"
-      x="-${(SIZE / 2) * SCALE}"
-      y="-${(SIZE / 2) * SCALE}"
       fill="${contribution.color}"
-    />
+    />`
+
+      return `  <g data-date="${contribution.date}">
+    ${shapeElement}
     <animateTransform
       attributeName="transform"
       attributeType="XML"
       type="translate"
       values="${values}"
-      dur="${result.stepCount * 8}ms"
+      dur="${result.stepCount * result.stepTime}ms"
       fill="freeze"
     />
   </g>`

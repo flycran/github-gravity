@@ -6,11 +6,9 @@ import { pointsOnPath } from 'points-on-path'
 import { SCALE, TextPathResult } from '../utils'
 
 function svgPathToRapierTrimesh(path: string, scale = 1, tolerance = 1) {
-  // pointsOnPath returns Point[][] — one array per sub-path, flatten them
   const subPaths = pointsOnPath(path, tolerance)
   const points = subPaths.flat()
 
-  // Point is [number, number], scale each coordinate
   const vertices = points.map(
     ([x, y]) => [x * scale, y * scale] as [number, number]
   )
@@ -25,12 +23,13 @@ function svgPathToRapierTrimesh(path: string, scale = 1, tolerance = 1) {
   }
 }
 
-// 字体文件路径：优先使用环境变量，否则使用默认路径
-const FONT_PATH =
-  process.env.GRAVITY_FONT_PATH ||
-  fileURLToPath(new URL('../assets/ARIAL.ttf', import.meta.url))
-
-const font = opentype.parse(readFileSync(FONT_PATH).buffer as ArrayBuffer)
+const font = opentype.parse(
+  readFileSync(
+    fileURLToPath(
+      new URL('../assets/LiberationSerif-Bold.ttf', import.meta.url)
+    )
+  ).buffer as ArrayBuffer
+)
 
 export function getTextPaths(text: string, fontSize: number): TextPathResult[] {
   const paths = font.getPaths(text, 0, 0, fontSize / SCALE)

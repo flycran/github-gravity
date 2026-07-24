@@ -13,9 +13,7 @@
   "bugs": {
     "url": "https://github.com/actions/typescript-action/issues"
   },
-  "keywords": [
-    "actions"
-  ],
+  "keywords": ["actions"],
   "exports": {
     ".": "./dist/index.js"
   },
@@ -42,12 +40,8 @@
     "@dimforge/rapier2d": "^0.19.3",
     "@dimforge/rapier2d-compat": "^0.19.3",
     "earcut": "^3.2.3",
-    "matter-js": "0.14.2",
     "opentype.js": "^2.0.0",
-    "planck": "^1.5.0",
-    "points-on-path": "^0.2.1",
-    "poly-decomp": "^0.3.0",
-    "svg-path-parser": "^1.1.0"
+    "points-on-path": "^0.2.1"
   },
   "devDependencies": {
     "@types/opentype.js": "^1.3.10",
@@ -59,9 +53,7 @@
     "@rollup/plugin-typescript": "^12.3.0",
     "@types/bun": "^1.3.14",
     "@types/jest": "^30.0.0",
-    "@types/matter-js": "^0.20.2",
     "@types/node": "^25.2.3",
-    "@types/svg-path-parser": "^1.1.6",
     "jest": "^30.2.0",
     "make-coverage-badge": "^1.2.0",
     "rollup": "^4.57.1",

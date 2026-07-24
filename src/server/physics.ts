@@ -7,12 +7,10 @@ import {
 } from '@dimforge/rapier2d-compat'
 import {
   ContributionJson,
-  FONT_SIZE,
   HEIGHT,
   INTERVAL,
   SIZE,
   SimulationResult,
-  TEXT_TOP,
   WIDTH
 } from '../utils'
 import {
@@ -79,7 +77,7 @@ async function createWord() {
   await init()
   // 重力
   const world = new World({ x: 0.0, y: -30 })
-  world.lengthUnit = 16
+  world.lengthUnit = 32
 
   // 地面
   world.createCollider(
@@ -105,15 +103,26 @@ const VELOCITY_THRESHOLD = 1e-3
 export interface SimulationOptions {
   username: string
   text?: string
+  /** 文字到顶部的距离 */
+  textTop?: number
+  /** 字体大小 */
   fontSize?: number
+  /** 一步的时间，单位为ms，越小速度越快 */
+  stepTime?: number
+  /** 轨迹采样率，每隔 N 步记录一个轨迹点。默认为 1（不采样）。值越大，SVG 越小 */
   sampleRate?: number
+  /** 贡献方块的形状：circle（圆形）或 square（方形）。圆形物理模拟更丝滑，不容易穿模。 */
+  shape?: string
 }
 
 export async function startSimulation({
   username,
   text = username,
-  fontSize = FONT_SIZE,
-  sampleRate = 4
+  textTop = 50,
+  fontSize = 80,
+  stepTime = 8,
+  sampleRate = 4,
+  shape = 'circle'
 }: SimulationOptions): Promise<SimulationResult> {
   const world = await createWord()
   const contributionsSet = new Set<Contribution>()
@@ -138,7 +147,7 @@ export async function startSimulation({
   const bboxCenterX = (minX + maxX) / 2
   const offsetX = WIDTH / 2 - bboxCenterX
   // 文字顶部距离世界顶部的距离
-  const centerY = HEIGHT - TEXT_TOP - maxY
+  const centerY = HEIGHT - textTop - maxY
   const textTriangles: number[][] = []
 
   for (const { paths } of textPaths) {
@@ -153,7 +162,9 @@ export async function startSimulation({
     world.createCollider(
       ColliderDesc.trimesh(flippedVertices, indices),
       world.createRigidBody(
-        RigidBodyDesc.fixed().setTranslation(offsetX, centerY)
+        RigidBodyDesc.fixed()
+          .setCcdEnabled(true)
+          .setTranslation(offsetX, centerY)
       )
     )
     for (let i = 0; i < indices.length; i += 3) {
@@ -169,24 +180,6 @@ export async function startSimulation({
         centerY + flippedVertices[i2 + 1]
       ])
     }
-  }
-
-  function createContribution(
-    contributionDay: RawContributionDay,
-    x: number,
-    y: number
-  ) {
-    // 动态刚体
-    const boxCollider = world.createCollider(
-      ColliderDesc.cuboid(SIZE / 2, SIZE / 2).setFriction(0.2),
-      world.createRigidBody(
-        RigidBodyDesc.dynamic().setCcdEnabled(true).setTranslation(x, y)
-      )
-    )
-
-    contributionsSet.add(
-      new Contribution(contributionDay, boxCollider, sampleRate)
-    )
   }
 
   const githubContributions = await fetchContributions(username)
@@ -208,10 +201,22 @@ export async function startSimulation({
       const dayOfWeek = new Date(contributionDay.date).getDay()
 
       if (contributionDay.count) {
-        createContribution(
-          contributionDay,
-          left + (INTERVAL + SIZE) * rowIndex,
-          top + (INTERVAL + SIZE) * dayOfWeek
+        const x = left + (INTERVAL + SIZE) * rowIndex
+        const y = top + (INTERVAL + SIZE) * dayOfWeek
+        // 动态刚体：圆形物理模拟更丝滑，不容易穿模
+        const colliderDesc =
+          shape === 'square'
+            ? ColliderDesc.cuboid(SIZE / 2, SIZE / 2).setFriction(0.2)
+            : ColliderDesc.ball(SIZE / 2).setFriction(0.2)
+        const boxCollider = world.createCollider(
+          colliderDesc,
+          world.createRigidBody(
+            RigidBodyDesc.dynamic().setCcdEnabled(true).setTranslation(x, y)
+          )
+        )
+
+        contributionsSet.add(
+          new Contribution(contributionDay, boxCollider, sampleRate)
         )
       }
     }
@@ -254,6 +259,7 @@ export async function startSimulation({
   return {
     stepCount,
     time: endTime - startTime,
+    shape,
     contributions: Array.from(contributionsSet).map((contribution) =>
       contribution.toJSON()
     ),
@@ -263,6 +269,7 @@ export async function startSimulation({
     })),
     textTriangles,
     offsetX,
-    centerY
+    centerY,
+    stepTime
   }
 }

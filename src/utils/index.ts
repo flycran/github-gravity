@@ -3,8 +3,6 @@ export const HEIGHT = 150
 export const SCALE = 3
 export const SIZE = 4
 export const INTERVAL = 1.5
-export const FONT_SIZE = 80
-export const TEXT_TOP = 50
 export const GITHUB_ID = 'Orta'
 export const TEXT = 'Orta Therox'
 
@@ -34,6 +32,8 @@ export interface ContributionJson {
 export interface SimulationResult {
   stepCount: number
   time: number
+  /** 贡献方块的形状：circle 或 square */
+  shape: string
   textPaths: Pick<TextPathResult, 'rect' | 'pathData'>[]
   contributions: ContributionJson[]
   /** 用户名文字碰撞体的三角网格（世界坐标），用于 web 端渲染 */
@@ -42,4 +42,6 @@ export interface SimulationResult {
   offsetX: number
   /** 文字在物理世界中的 Y 偏移量 */
   centerY: number
+  /** 一步的时间（ms） */
+  stepTime: number
 }
