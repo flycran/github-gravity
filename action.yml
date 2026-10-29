@@ -80,10 +80,11 @@ inputs:
     default: '1.5'
   font-path:
     description: >-
-      Path to a custom font (.ttf/.otf), relative to the repository root. Defaults to the bundled
-      Liberation Serif Bold. Use with caution: some fonts contain open or self-intersecting
-      contours that the triangulation algorithm rejects, and some cannot be parsed by opentype.js
-      at all; different font metrics may also require re-tuning font-size and text-top.
+      Path to a custom font (.ttf/.otf), relative to the repository root, or an http(s) URL.
+      Defaults to the bundled Liberation Serif Bold. Use with caution: some fonts contain open
+      or self-intersecting contours that the triangulation algorithm rejects, and some cannot
+      be parsed by opentype.js at all; different font metrics may also require re-tuning
+      font-size and text-top.
     required: false
 
 outputs:
