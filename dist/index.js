@@ -45764,13 +45764,14 @@ async function startSimulation({ username, text = username, textTop = 50, fontSi
 }
 
 /**
- * 将模拟结果渲染为贡献方块重力模拟的 SVG 动画字符串。
- * 纯字符串拼接、无副作用，不依赖物理引擎，是 gensvg 与 web 端共用的唯一渲染层。
+ * 生成贡献方块重力模拟的 SVG 动画字符串。
+ * 模拟 GitHub 用户的贡献方块从上方掉落，最终静止在底部。
  *
- * @param result - startSimulation 的返回值
+ * @param options - 包含 GitHub 用户名
  * @returns 完整的 SVG 字符串
  */
-function renderSvg(result) {
+async function gensvg(options) {
+    const result = await startSimulation(options);
     const svgWidth = result.width * SCALE;
     const svgHeight = result.height * SCALE;
     // 生成每个贡献方块的 SVG 元素
@@ -45785,31 +45786,31 @@ function renderSvg(result) {
         const keyTimes = buildKeyTimes(contribution.trajectory);
         const keyTimesAttr = keyTimes
             ? `
-      keyTimes="${keyTimes}"`
+        keyTimes="${keyTimes}"`
             : '';
         const shapeElement = isCircle
             ? `<circle
-      r="${(result.size / 2) * SCALE}"
-      fill="${contribution.color}"
-    />`
+        r="${(result.size / 2) * SCALE}"
+        fill="${contribution.color}"
+      />`
             : `<rect
-      x="${-(result.size / 2) * SCALE}"
-      y="${-(result.size / 2) * SCALE}"
-      width="${result.size * SCALE}"
-      height="${result.size * SCALE}"
-      fill="${contribution.color}"
-    />`;
+        x="${-(result.size / 2) * SCALE}"
+        y="${-(result.size / 2) * SCALE}"
+        width="${result.size * SCALE}"
+        height="${result.size * SCALE}"
+        fill="${contribution.color}"
+      />`;
         return `  <g data-date="${contribution.date}">
-    ${shapeElement}
-    <animateTransform
-      attributeName="transform"
-      attributeType="XML"
-      type="translate"
-      values="${values}"${keyTimesAttr}
-      dur="${result.stepCount * result.stepTime}ms"
-      fill="freeze"
-    />
-  </g>`;
+      ${shapeElement}
+      <animateTransform
+        attributeName="transform"
+        attributeType="XML"
+        type="translate"
+        values="${values}"${keyTimesAttr}
+        dur="${result.stepCount * result.stepTime}ms"
+        fill="freeze"
+      />
+    </g>`;
     })
         .join('\n');
     // 用 path 渲染文字路径，与物理碰撞体坐标对齐
@@ -45818,30 +45819,19 @@ function renderSvg(result) {
         .map(({ pathData }) => `    <path d="${pathData}" fill="${result.textColor}" />`)
         .join('\n');
     const textGroupSvg = `
-  <g transform="translate(${result.offsetX * SCALE}, ${(result.height - result.centerY) * SCALE}) scale(${SCALE})">
-${textPathsSvg}
-  </g>`;
+    <g transform="translate(${result.offsetX * SCALE}, ${(result.height - result.centerY) * SCALE}) scale(${SCALE})">
+  ${textPathsSvg}
+    </g>`;
     return `<svg
-  xmlns="http://www.w3.org/2000/svg"
-  width="${svgWidth}"
-  height="${svgHeight}"
-  viewBox="0 0 ${svgWidth} ${svgHeight}"
->
-  <rect width="${svgWidth}" height="${svgHeight}" fill="${result.backgroundColor}" />
-${contributionsSvg}
-${textGroupSvg}
-</svg>`;
-}
-
-/**
- * 生成贡献方块重力模拟的 SVG 动画字符串。
- * 模拟 GitHub 用户的贡献方块从上方掉落，最终静止在底部。
- *
- * @param options - 包含 GitHub 用户名
- * @returns 完整的 SVG 字符串
- */
-async function gensvg(options) {
-    return renderSvg(await startSimulation(options));
+    xmlns="http://www.w3.org/2000/svg"
+    width="${svgWidth}"
+    height="${svgHeight}"
+    viewBox="0 0 ${svgWidth} ${svgHeight}"
+  >
+    <rect width="${svgWidth}" height="${svgHeight}" fill="${result.backgroundColor}" />
+  ${contributionsSvg}
+  ${textGroupSvg}
+  </svg>`;
 }
 
 /** 读取可选数字输入，未填写时返回 undefined，由库使用默认值 */

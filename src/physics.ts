@@ -19,7 +19,7 @@ import {
   fetchContributions,
   INTENSITY_COLORS,
   RawContributionDay
-} from './utils/github-contributions'
+} from './utils/githubContributions'
 import {
   CompressedTrajectoryPoint,
   simplifyTrajectoryDP,

@@ -97,6 +97,9 @@ Thumbs.db
 # Ignore built ts files
 __tests__/runner/*
 
+# Static build of the web player
+dist-web
+
 # IDE files
 .idea
 *.code-workspace

@@ -15,8 +15,12 @@
     }
 
     body {
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      grid-template-rows: 1fr auto;
+      grid-template-areas:
+        "options stage"
+        "transport transport";
       height: 100vh;
       margin: 0;
       background-color: #ddd;
@@ -27,12 +31,23 @@
     }
 
     #options {
+      grid-area: options;
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px 14px;
-      align-items: flex-end;
-      padding: 10px 14px;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px 14px;
+      overflow: hidden;
+      border-right: 1px solid #ddd;
       background-color: #fff;
+    }
+
+    #options .fields {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
     }
 
     #options label {
@@ -59,14 +74,61 @@
     }
 
     #options input:not([type="checkbox"]) {
-      width: 140px;
+      width: 100%;
     }
 
-    #options input[type="number"] {
-      width: 70px;
+    #options .field {
+      display: flex;
+      gap: 4px;
+    }
+
+    #options .upload {
+      flex: 1;
+      min-width: 0;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 6px;
+      border: 1px solid #bbb;
+      border-radius: 4px;
+      background-color: #fafafa;
+      color: #222;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    #options .upload span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #options .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    #options .field-title {
+      font-size: 12px;
+      color: #555;
+    }
+
+    #clear-font {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      padding: 4px;
+      border: 1px solid #bbb;
+      border-radius: 4px;
+      background-color: #fafafa;
+      color: #666;
+      cursor: pointer;
     }
 
     #generate {
+      width: 100%;
       padding: 6px 18px;
       border: none;
       border-radius: 4px;
@@ -82,7 +144,8 @@
     }
 
     #stage {
-      flex: 1;
+      grid-area: stage;
+      min-width: 0;
       min-height: 0;
       display: flex;
       align-items: center;
@@ -115,10 +178,12 @@
     }
 
     #transport {
+      grid-area: transport;
       display: flex;
       align-items: center;
       gap: 12px;
       padding: 8px 14px;
+      border-top: 1px solid #ddd;
       background-color: #fff;
     }
 
@@ -138,6 +203,11 @@
     #play:disabled {
       opacity: 0.5;
       cursor: default;
+    }
+
+    /* UA 样式的 [hidden] 不作用于 SVG 元素，需要显式隐藏 */
+    #play svg[hidden] {
+      display: none;
     }
 
     #progress {
@@ -167,56 +237,111 @@
 
   <body>
     <form id="options">
-      <label
-        >GitHub 用户名<input name="username" value="Orta" required /></label
-      >
-      <label>文字<input name="text" placeholder="默认同用户名" /></label>
-      <label>
-        方块形状
-        <select name="shape">
-          <option value="circle">圆形</option>
-          <option value="square">方形</option>
-        </select>
-      </label>
-      <label
-        >背景颜色<input name="backgroundColor" value="transparent" /></label
-      >
-      <label>文字颜色<input name="textColor" value="#eb510a" /></label>
-      <label
-        >步长时间 (ms)<input
-          name="stepTime"
-          type="number"
-          value="8"
-          min="1" /></label
-      >
-      <label>
-        压缩容差 (px)<input
-          name="compressionTolerance"
-          type="number"
-          value="0.5"
-          min="0"
-          step="0.5" />
-      </label>
-      <label>
-        压缩算法<select name="compressionAlgorithm">
-          <option value="Greedy" selected>Greedy（快）</option>
-          <option value="DP">DP（最优·慢）</option>
-          <option value="RDP">RDP（最快）</option>
-        </select>
-      </label>
-      <label
-        >字号<input name="fontSize" type="number" value="80" min="1" /></label
-      >
-      <label
-        >文字距顶部<input
-          name="textTop"
-          type="number"
-          value="50"
-          min="0" /></label
-      >
-      <label class="inline">
-        <input name="disableCompression" type="checkbox" />禁用压缩
-      </label>
+      <div class="fields">
+        <label
+          >GitHub 用户名 / Username<input
+            name="username"
+            value="Orta"
+            required /></label
+        >
+        <label
+          >文字 / Text<input name="text" placeholder="默认同用户名" /></label
+        >
+        <label>
+          方块形状 / Shape
+          <select name="shape">
+            <option value="circle">圆形</option>
+            <option value="square">方形</option>
+          </select>
+        </label>
+        <label
+          >背景颜色 / Background<input
+            name="backgroundColor"
+            value="transparent" /></label
+        >
+        <label
+          >文字颜色 / Text color<input
+            name="textColor"
+            value="#eb510a" /></label
+        >
+        <label
+          >步长时间 (ms) / Step time<input
+            name="stepTime"
+            type="number"
+            value="8"
+            min="1" /></label
+        >
+        <label>
+          压缩容差 (px) / Tolerance<input
+            name="compressionTolerance"
+            type="number"
+            value="0.5"
+            min="0"
+            step="0.5" />
+        </label>
+        <label>
+          压缩算法 / Algorithm<select name="compressionAlgorithm">
+            <option value="Greedy" selected>Greedy（快）</option>
+            <option value="DP">DP（最优·慢）</option>
+            <option value="RDP">RDP（最快）</option>
+          </select>
+        </label>
+        <label
+          >字号 / Font size<input
+            name="fontSize"
+            type="number"
+            value="80"
+            min="1" /></label
+        >
+        <label
+          >文字距顶部 / Text top<input
+            name="textTop"
+            type="number"
+            value="50"
+            min="0" /></label
+        >
+        <div class="field-group">
+          <span class="field-title">上传字体 / Upload font</span>
+          <div class="field">
+            <label class="upload">
+              <input
+                id="font"
+                name="font"
+                type="file"
+                accept=".ttf,.otf"
+                hidden />
+              <span id="font-label">选择文件</span>
+            </label>
+            <button
+              id="clear-font"
+              type="button"
+              title="清除已上传字体"
+              aria-label="清除已上传字体">
+              <svg
+                viewBox="0 0 16 16"
+                width="12"
+                height="12"
+                aria-hidden="true">
+                <path
+                  d="M4 4l8 8M12 4l-8 8"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <label
+          >字体 URL / Font URL<input
+            id="font-url"
+            name="fontUrl"
+            placeholder="二选一：上传文件或填 URL" /></label
+        >
+        <label class="inline">
+          <input name="disableCompression" type="checkbox" />禁用压缩 / No
+          compression
+        </label>
+      </div>
       <button id="generate" type="submit">生成</button>
     </form>
 

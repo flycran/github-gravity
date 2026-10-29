@@ -25,7 +25,7 @@ jobs:
         uses: jdx/mise-action@v2
 
       - name: Install Dependencies
-        run: bun install --frozen-lockfile
+        run: bun ci
 
       - name: Bundle
         run: npm run bundle
