@@ -17,8 +17,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as gensvgModule from '../src/gensvg'
 import { run } from '../src/main'
+import { SimulationOptions } from '../src/physics'
 
-let captured: Record<string, unknown> | null = null
+let captured: SimulationOptions | null
 
 /** main.ts 读取的全部输入（@actions/core 按 INPUT_<NAME> 大写读取） */
 const INPUT_NAMES = [
@@ -50,9 +51,8 @@ let workDir = ''
 beforeEach(() => {
   for (const name of INPUT_NAMES) delete process.env[`INPUT_${name}`]
   captured = null
-  // 只替换 gensvg，避免跑真实物理与网络；spyOn 可被 restore，不会泄漏到其他测试文件
   spyOn(gensvgModule, 'gensvg').mockImplementation(async (options) => {
-    captured = options as Record<string, unknown>
+    captured = options
     return '<svg />'
   })
   process.exitCode = 0
