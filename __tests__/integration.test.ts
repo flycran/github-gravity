@@ -21,7 +21,7 @@ function mockContributionsResponse() {
 }
 
 const mockFetchContributions = mock(async () => mockContributionsResponse())
-mock.module('../src/utils/github-contributions.ts', () => ({
+mock.module('../src/utils/githubContributions.ts', () => ({
   fetchContributions: mockFetchContributions,
   INTENSITY_COLORS: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39']
 }))
