@@ -1,109 +1,164 @@
-import { HEIGHT, SCALE, SIZE, WIDTH } from '../utils'
-import type { ContributionJson, SimulationResult } from '../utils/index'
+const canvas = document.getElementById('canvas') as HTMLDivElement
+const form = document.getElementById('options') as HTMLFormElement
+const generateBtn = document.getElementById('generate') as HTMLButtonElement
+const playBtn = document.getElementById('play') as HTMLButtonElement
+const iconPlay = document.getElementById('icon-play') as HTMLElement
+const iconPause = document.getElementById('icon-pause') as HTMLElement
+const progress = document.getElementById('progress') as HTMLInputElement
+const timeLabel = document.getElementById('time') as HTMLSpanElement
+const statsLabel = document.getElementById('stats') as HTMLSpanElement
 
-const trajectoryRes: SimulationResult = await fetch('/trajectory').then((res) =>
-  res.json()
-)
+/** 当前动画总时长（ms），由模拟结果决定 */
+let duration = 0
+let playing = false
 
-const svg = document.getElementById('canvas') as unknown as SVGSVGElement
-
-svg.style.width = WIDTH * SCALE + 'px'
-svg.style.height = HEIGHT * SCALE + 'px'
-svg.setAttribute('viewBox', `0 0 ${svg.style.width} ${svg.style.height}`)
-
-// 背景
-const background = document.createElementNS(
-  'http://www.w3.org/2000/svg',
-  'rect'
-)
-background.setAttribute('width', `${WIDTH * SCALE}`)
-background.setAttribute('height', `${HEIGHT * SCALE}`)
-background.setAttribute('fill', trajectoryRes.backgroundColor)
-svg.appendChild(background)
-
-function createContribution(contribution: ContributionJson) {
-  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-  svg.appendChild(g)
-  g.setAttribute('data-date', contribution.date)
-
-  const isCircle = trajectoryRes.shape === 'circle'
-
-  if (isCircle) {
-    const circle = document.createElementNS(
-      'http://www.w3.org/2000/svg',
-      'circle'
-    ) as SVGCircleElement
-    circle.setAttribute('r', `${(SIZE / 2) * SCALE}`)
-    circle.setAttribute('fill', contribution.color)
-    g.appendChild(circle)
-  } else {
-    const rect = document.createElementNS(
-      'http://www.w3.org/2000/svg',
-      'rect'
-    ) as SVGRectElement
-    rect.setAttribute('x', `${-(SIZE / 2) * SCALE}`)
-    rect.setAttribute('y', `${-(SIZE / 2) * SCALE}`)
-    rect.setAttribute('width', `${SIZE * SCALE}`)
-    rect.setAttribute('height', `${SIZE * SCALE}`)
-    rect.setAttribute('fill', contribution.color)
-    g.appendChild(rect)
-  }
-
-  const animateTransform = document.createElementNS(
-    'http://www.w3.org/2000/svg',
-    'animateTransform'
-  )
-
-  animateTransform.setAttribute('attributeName', 'transform')
-  animateTransform.setAttribute('attributeType', 'XML')
-  animateTransform.setAttribute('type', 'translate')
-  animateTransform.setAttribute(
-    'values',
-    contribution.trajectory
-      .map(({ x, y }) => `${x * SCALE},${(HEIGHT - y) * SCALE}`)
-      .join(';')
-  )
-  animateTransform.setAttribute(
-    'dur',
-    `${trajectoryRes.stepCount * trajectoryRes.stepTime}ms`
-  )
-  animateTransform.setAttribute('fill', 'freeze')
-
-  g.appendChild(animateTransform)
+function getSvg(): SVGSVGElement | null {
+  return canvas.querySelector('svg')
 }
 
-trajectoryRes.contributions.forEach(createContribution)
+function updatePlayIcon() {
+  iconPlay.toggleAttribute('hidden', playing)
+  iconPause.toggleAttribute('hidden', !playing)
+}
 
-// 用三角网格渲染用户名文字（与物理碰撞体完全一致）
-// for (const tri of trajectoryRes.textTriangles) {
-//   const [x0, y0, x1, y1, x2, y2] = tri
-//   const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon')
-//   poly.setAttribute(
-//     'points',
-//     `${(x0 * SCALE).toFixed(1)},${((HEIGHT - y0) * SCALE).toFixed(1)} ${(x1 * SCALE).toFixed(1)},${((HEIGHT - y1) * SCALE).toFixed(1)} ${(x2 * SCALE).toFixed(1)},${((HEIGHT - y2) * SCALE).toFixed(1)}`
-//   )
-//   poly.setAttribute('fill', '#000')
-//   svg.appendChild(poly)
-// }
+function renderProgress(ms: number) {
+  progress.value = String(ms)
+  timeLabel.textContent = `${(ms / 1000).toFixed(2)}s / ${(duration / 1000).toFixed(2)}s`
+}
 
-const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-// 将 opentype 坐标（Y 轴向上）变换到 SVG 坐标（Y 轴向下），与物理体世界坐标对齐
-// 物理世界: worldX = opentypeX + offsetX, worldY = -opentypeY + centerY
-// SVG: svgX = worldX * SCALE, svgY = (HEIGHT - worldY) * SCALE
-// 合并: svgX = (opentypeX + offsetX) * SCALE, svgY = (HEIGHT - centerY + opentypeY) * SCALE
-g.setAttribute(
-  'transform',
-  `translate(${trajectoryRes.offsetX * SCALE}, ${(HEIGHT - trajectoryRes.centerY) * SCALE}) scale(${SCALE})`
-)
-svg.appendChild(g)
+// SMIL 文档时间是播放状态的唯一来源，进度条只是它的视图
+function seek(ms: number) {
+  getSvg()?.setCurrentTime(ms / 1000)
+  renderProgress(ms)
+}
 
-trajectoryRes.textPaths.forEach(({ pathData }) => {
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-  path.setAttribute('d', pathData)
-  path.setAttribute('fill', trajectoryRes.textColor)
-  g.appendChild(path)
+function tick() {
+  if (!playing) return
+  const svg = getSvg()
+  if (!svg) return
+  const ms = svg.getCurrentTime() * 1000
+  if (ms >= duration) {
+    // 冻结 SMIL 时钟并钉在末帧，避免文档时间空转
+    svg.pauseAnimations()
+    svg.setCurrentTime(duration / 1000)
+    playing = false
+    updatePlayIcon()
+    renderProgress(duration)
+    return
+  }
+  renderProgress(ms)
+  requestAnimationFrame(tick)
+}
+
+function togglePlay() {
+  const svg = getSvg()
+  if (!svg || duration === 0) return
+  if (playing) {
+    svg.pauseAnimations()
+    playing = false
+  } else {
+    // 播放到末尾后再次播放回到起点
+    if (svg.getCurrentTime() * 1000 >= duration) svg.setCurrentTime(0)
+    svg.unpauseAnimations()
+    playing = true
+    requestAnimationFrame(tick)
+  }
+  updatePlayIcon()
+}
+
+/** 动画总时长（ms），从 SMIL 动画的 dur 属性读取，如 "7872ms" */
+function readDuration(): number {
+  const dur = canvas.querySelector('animateTransform')?.getAttribute('dur')
+  const ms = dur ? parseFloat(dur) : NaN
+  return Number.isFinite(ms) ? ms : 0
+}
+
+function formatBytes(bytes: number): string {
+  return bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`
+}
+
+function formatElapsed(ms: number): string {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`
+}
+
+/** 显示本次生成的 SVG 文件大小与耗时（含网络往返） */
+function renderStats(svgText: string, elapsedMs: number) {
+  statsLabel.textContent = `文件大小 ${formatBytes(
+    new Blob([svgText]).size
+  )} · 生成耗时 ${formatElapsed(elapsedMs)}`
+  statsLabel.hidden = false
+}
+
+async function generate() {
+  const data = new FormData(form)
+  // 值为空的参数不携带，由后端回退到默认值
+  const params = new URLSearchParams()
+  for (const key of [
+    'username',
+    'text',
+    'shape',
+    'backgroundColor',
+    'textColor',
+    'stepTime',
+    'compressionTolerance',
+    'compressionAlgorithm',
+    'fontSize',
+    'textTop'
+  ]) {
+    const value = String(data.get(key) ?? '').trim()
+    if (value !== '') params.set(key, value)
+  }
+  if (data.get('disableCompression') === 'on')
+    params.set('disableCompression', '1')
+
+  playing = false
+  updatePlayIcon()
+  playBtn.disabled = true
+  progress.disabled = true
+  generateBtn.disabled = true
+  generateBtn.textContent = '生成中…'
+  canvas.innerHTML = '<p class="placeholder">模拟计算中…</p>'
+
+  try {
+    const startedAt = performance.now()
+    const res = await fetch(`/svg?${params}`)
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      throw new Error(
+        body?.error ?? `生成失败：${res.status} ${res.statusText}`
+      )
+    }
+    const svgText = await res.text()
+    renderStats(svgText, performance.now() - startedAt)
+    canvas.innerHTML = svgText
+    duration = readDuration()
+    progress.max = String(duration)
+    renderProgress(0)
+    playBtn.disabled = false
+    progress.disabled = false
+    // 生成完成自动播放
+    togglePlay()
+  } catch (err) {
+    statsLabel.hidden = true
+    canvas.innerHTML = ''
+    const error = document.createElement('p')
+    error.className = 'error'
+    error.textContent = err instanceof Error ? err.message : String(err)
+    canvas.append(error)
+  } finally {
+    generateBtn.disabled = false
+    generateBtn.textContent = '生成'
+  }
+}
+
+form.addEventListener('submit', (event) => {
+  event.preventDefault()
+  generate()
 })
+playBtn.addEventListener('click', togglePlay)
+progress.addEventListener('input', () => seek(Number(progress.value)))
 
-svg.appendChild(g)
+// 页面加载后先用表单默认参数生成一次
+generate()
 
 export {}

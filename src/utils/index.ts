@@ -20,13 +20,20 @@ export interface TextPathResult {
   }
 }
 
+export interface Point {
+  x: number
+  y: number
+  /**
+   * 启用压缩时，该点与前一个保留点的原始索引差，用于还原关键帧的时间位置；
+   * 未压缩时不存在，消费端回退到 SMIL 默认的均分时间
+   */
+  span?: number
+}
+
 export interface ContributionJson {
   date: string
   color: string
-  trajectory: {
-    x: number
-    y: number
-  }[]
+  trajectory: Point[]
 }
 
 export interface SimulationResult {
@@ -48,4 +55,10 @@ export interface SimulationResult {
   backgroundColor: string
   /** 文字颜色 */
   textColor: string
+  /** 物理世界宽度，渲染时换算成 SVG 宽度 */
+  width: number
+  /** 物理世界高度，同时用于坐标 Y 轴翻转 */
+  height: number
+  /** 贡献方块边长，决定渲染出的方块尺寸 */
+  size: number
 }

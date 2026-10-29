@@ -31,6 +31,7 @@
   "scripts": {
     "bundle": "bun biome check --write . && npm run package",
     "ci-test": "bun test",
+    "compare": "bun scripts/compare.ts",
     "coverage": "npx make-coverage-badge --output-path ./badges/coverage.svg",
     "format:write": "bun biome format --write .",
     "format:check": "bun biome format .",

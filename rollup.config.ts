@@ -14,7 +14,7 @@ const config = {
   },
   plugins: [
     typescript({
-      tsconfig: 'tsconfig.bun.json',
+      tsconfig: 'tsconfig.json',
       compilerOptions: { composite: false }
     }),
     nodeResolve({ preferBuiltins: true }),

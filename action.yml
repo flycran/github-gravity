@@ -21,10 +21,23 @@ inputs:
     description: Font size of the collision text
     required: false
     default: '80'
-  sample-rate:
-    description: Trajectory sample rate (higher = smaller SVG, less smooth animation)
+  compression-tolerance:
+    description: >-
+      Trajectory compression tolerance in SVG pixels. At every original moment of the
+      animation, the interpolated position stays within this distance of the real one,
+      which shrinks the SVG at the cost of a small visual approximation. 0 keeps the
+      trajectory lossless in both position and timing (only uniform straight segments
+      and pauses are compressed); the default fits most cases.
     required: false
-    default: '4'
+    default: '0.5'
+  compression-algorithm:
+    description: >-
+      Trajectory compression algorithm: Greedy (default) is fast with near-optimal
+      results; DP finds the globally fewest keyframes (smallest SVG) but can take
+      seconds on long trajectories; RDP is the fastest with somewhat more keyframes.
+      All algorithms preserve speed and timing — bounces and stops stay keyframes.
+    required: false
+    default: Greedy
   shape:
     description: Shape of the contribution blocks (circle or square). Circle has smoother physics and less likely to clip through obstacles.
     required: false
@@ -41,6 +54,37 @@ inputs:
     description: Color of the collision text (CSS color value)
     required: false
     default: black
+  width:
+    description: >-
+      Width of the physics world. Change with caution: the horizontal block layout, the text
+      centering and the final SVG width are all derived from it.
+    required: false
+    default: '300'
+  height:
+    description: >-
+      Height of the physics world. Change with caution: the block drop height, the text
+      position and the final SVG height are all derived from it.
+    required: false
+    default: '150'
+  size:
+    description: >-
+      Side length of each contribution block. Change with caution: larger blocks are more
+      likely to squeeze against each other or clip through the text.
+    required: false
+    default: '4'
+  interval:
+    description: >-
+      Spacing between contribution blocks. Change with caution: too small makes blocks overlap,
+      too large pushes them out of the world bounds.
+    required: false
+    default: '1.5'
+  font-path:
+    description: >-
+      Path to a custom font (.ttf/.otf), relative to the repository root. Defaults to the bundled
+      Liberation Serif Bold. Use with caution: some fonts contain open or self-intersecting
+      contours that the triangulation algorithm rejects, and some cannot be parsed by opentype.js
+      at all; different font metrics may also require re-tuning font-size and text-top.
+    required: false
 
 outputs:
   svg-path:

@@ -36,7 +36,6 @@ jobs:
           username: Orta
           text: Github gravity
           output-path: deploy/gravity.svg
-          sample-rate: '8'
 
       - name: Deploy to output branch
         uses: peaceiris/actions-gh-pages@v4
