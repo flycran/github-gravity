@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
@@ -7,25 +7,255 @@
       name="viewport"
       content="width=device-width,initial-scale=1.0,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no" />
     <meta name="theme-color" content="#000000" />
-    <meta name="msapplication-navbutton-color" content="#000000" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta
-      name="apple-mobile-web-app-status-bar-style"
-      content="black-translucent" />
     <meta name="robots" content="noindex" />
+    <title>github-gravity player</title>
     <style>
-    @font-face {
-      font-family: "ArialCustom";
-      src: url("/assets/ARIAL.ttf") format("truetype");
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      margin: 0;
+      background-color: #ddd;
+      color: #222;
+      font:
+        13px / 1.5 system-ui,
+        sans-serif;
+    }
+
+    #options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      align-items: flex-end;
+      padding: 10px 14px;
+      background-color: #fff;
+    }
+
+    #options label {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      font-size: 12px;
+      color: #555;
+    }
+
+    #options label.inline {
+      flex-direction: row;
+      align-items: center;
+      gap: 5px;
+    }
+
+    #options input,
+    #options select {
+      font: inherit;
+      padding: 4px 6px;
+      border: 1px solid #bbb;
+      border-radius: 4px;
+      background-color: #fafafa;
+    }
+
+    #options input:not([type="checkbox"]) {
+      width: 140px;
+    }
+
+    #options input[type="number"] {
+      width: 70px;
+    }
+
+    #generate {
+      padding: 6px 18px;
+      border: none;
+      border-radius: 4px;
+      background-color: #eb510a;
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    #generate:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    #stage {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+    }
+
+    #canvas {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #canvas svg {
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    #canvas .placeholder {
+      font-size: 14px;
+      color: #888;
+    }
+
+    #canvas .error {
+      font-size: 14px;
+      color: #c0392b;
+      white-space: pre-wrap;
+    }
+
+    #transport {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 14px;
+      background-color: #fff;
+    }
+
+    #play {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border: 1px solid #bbb;
+      border-radius: 50%;
+      background-color: #fafafa;
+      color: #222;
+      cursor: pointer;
+    }
+
+    #play:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    #progress {
+      flex: 1;
+      accent-color: #eb510a;
+    }
+
+    #progress:disabled {
+      opacity: 0.5;
+    }
+
+    #time {
+      min-width: 110px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: #555;
+    }
+
+    #stats {
+      margin-left: auto;
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+      color: #555;
     }
     </style>
   </head>
 
-  <body
-    style="display: flex;justify-content: center;align-items: center;height: 100vh;background-color: #ddd;margin:0;">
-    <div style="font-size: 0;">
-      <svg id="canvas"></svg>
+  <body>
+    <form id="options">
+      <label
+        >GitHub 用户名<input name="username" value="Orta" required /></label
+      >
+      <label>文字<input name="text" placeholder="默认同用户名" /></label>
+      <label>
+        方块形状
+        <select name="shape">
+          <option value="circle">圆形</option>
+          <option value="square">方形</option>
+        </select>
+      </label>
+      <label
+        >背景颜色<input name="backgroundColor" value="transparent" /></label
+      >
+      <label>文字颜色<input name="textColor" value="#eb510a" /></label>
+      <label
+        >步长时间 (ms)<input
+          name="stepTime"
+          type="number"
+          value="8"
+          min="1" /></label
+      >
+      <label>
+        压缩容差 (px)<input
+          name="compressionTolerance"
+          type="number"
+          value="0.5"
+          min="0"
+          step="0.5" />
+      </label>
+      <label>
+        压缩算法<select name="compressionAlgorithm">
+          <option value="Greedy" selected>Greedy（快）</option>
+          <option value="DP">DP（最优·慢）</option>
+          <option value="RDP">RDP（最快）</option>
+        </select>
+      </label>
+      <label
+        >字号<input name="fontSize" type="number" value="80" min="1" /></label
+      >
+      <label
+        >文字距顶部<input
+          name="textTop"
+          type="number"
+          value="50"
+          min="0" /></label
+      >
+      <label class="inline">
+        <input name="disableCompression" type="checkbox" />禁用压缩
+      </label>
+      <button id="generate" type="submit">生成</button>
+    </form>
+
+    <main id="stage">
+      <div id="canvas"></div>
+    </main>
+
+    <div id="transport">
+      <button id="play" type="button" aria-label="播放/暂停" disabled>
+        <svg
+          id="icon-play"
+          viewBox="0 0 16 16"
+          width="14"
+          height="14"
+          aria-hidden="true">
+          <path d="M4 2.5v11l9.5-5.5z" fill="currentColor" />
+        </svg>
+        <svg
+          id="icon-pause"
+          viewBox="0 0 16 16"
+          width="14"
+          height="14"
+          aria-hidden="true"
+          hidden>
+          <path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z" fill="currentColor" />
+        </svg>
+      </button>
+      <input
+        id="progress"
+        type="range"
+        min="0"
+        max="1000"
+        step="1"
+        value="0"
+        disabled />
+      <span id="time">0.00s / 0.00s</span>
+      <span id="stats" hidden></span>
     </div>
+
     <script type="module" src="./index.ts"></script>
   </body>
 </html>
