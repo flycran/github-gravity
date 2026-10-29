@@ -164,6 +164,8 @@
     #canvas svg {
       max-width: 100%;
       max-height: 100%;
+      /* 用 outline 而非 border：不占布局尺寸，也不会挤压 SVG 内容 */
+      outline: 1px solid #bbb;
     }
 
     #canvas .placeholder {
