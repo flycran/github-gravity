@@ -35,7 +35,10 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
-          cache: npm
+
+      - name: Setup mise
+        id: setup-mise
+        uses: jdx/mise-action@v2
 
       - name: Remove dist/ Directory
         id: remove-dist
@@ -43,7 +46,7 @@ jobs:
 
       - name: Install Dependencies
         id: install
-        run: npm ci
+        run: bun ci
 
       - name: Build dist/ Directory
         id: build

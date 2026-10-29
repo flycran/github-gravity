@@ -3,20 +3,22 @@
  * Physics, network and SVG generation are mocked out; only input wiring is asserted.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  spyOn
+} from 'bun:test'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import * as gensvgModule from '../src/gensvg'
 import { run } from '../src/main'
 
 let captured: Record<string, unknown> | null = null
-
-mock.module('../src/gensvg.ts', () => ({
-  gensvg: async (options: Record<string, unknown>) => {
-    captured = options
-    return '<svg />'
-  }
-}))
 
 /** main.ts 读取的全部输入（@actions/core 按 INPUT_<NAME> 大写读取） */
 const INPUT_NAMES = [
@@ -48,6 +50,11 @@ let workDir = ''
 beforeEach(() => {
   for (const name of INPUT_NAMES) delete process.env[`INPUT_${name}`]
   captured = null
+  // 只替换 gensvg，避免跑真实物理与网络；spyOn 可被 restore，不会泄漏到其他测试文件
+  spyOn(gensvgModule, 'gensvg').mockImplementation(async (options) => {
+    captured = options as Record<string, unknown>
+    return '<svg />'
+  })
   process.exitCode = 0
   workDir = mkdtempSync(join(tmpdir(), 'github-gravity-'))
   process.env.GITHUB_OUTPUT = join(workDir, 'output.txt')
@@ -60,6 +67,7 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const name of INPUT_NAMES) delete process.env[`INPUT_${name}`]
+  mock.restore()
   process.exitCode = 0
 })
 
