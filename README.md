@@ -1,6 +1,6 @@
 # GitHub Gravity
 
-![CI](https://github.com/actions/typescript-action/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/flycran/github-gravity/actions/workflows/ci.yml/badge.svg)
 ![Coverage](./badges/coverage.svg)
 
 Make your GitHub contribution graph fall under gravity, colliding with custom text to produce a beautiful animated SVG.
@@ -10,6 +10,13 @@ Make your GitHub contribution graph fall under gravity, colliding with custom te
 ## Preview
 
 ![Gravity Animation](https://raw.githubusercontent.com/flycran/github-gravity/output/gravity.svg)
+
+## Live Preview
+
+Try it in the browser: tweak the options, upload a font file or paste a font URL, then play
+the animation back.
+
+<https://flycran.github.io/github-gravity/>
 
 ## Inspiration
 
@@ -44,7 +51,7 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 | `height` | ❌ | `150` | Height of the physics world. ⚠️ Affects layout and SVG size |
 | `size` | ❌ | `4` | Side length of each contribution block. ⚠️ Affects physics |
 | `interval` | ❌ | `1.5` | Spacing between contribution blocks. ⚠️ Affects physics |
-| `font-path` | ❌ | bundled font | Custom font file (`.ttf`/`.otf`), relative to the repository root. ⚠️ Some fonts may fail to load |
+| `font-path` | ❌ | bundled font | Custom font file (`.ttf`/`.otf`), relative to the repository root, or an `http(s)` URL. ⚠️ Some fonts may fail to load |
 
 ### Reducing file size
 
@@ -80,8 +87,9 @@ size. The contribution blocks are laid out from `size` and `interval`, the text 
 with `width`, and the drop height follows `height` — change them together and re-check the
 result rather than tweaking one in isolation.
 
-`font-path` swaps the collision font. The bundled Liberation Serif Bold is used by default
-because its contours are clean and reliably triangulated. Custom fonts are risky:
+`font-path` swaps the collision font. It accepts a local `.ttf`/`.otf` path or an `http(s)` URL.
+The bundled Liberation Serif Bold is used by default because its contours are clean and
+reliably triangulated. Custom fonts are risky:
 
 - Contours that are not closed or that self-intersect are silently tolerated by most
   renderers, but the triangulation used for the physics collider rejects them.
@@ -148,6 +156,9 @@ After modifying code under `src/`, re-bundle:
 ```bash
 npm run bundle
 ```
+
+The Action bundle does not include the browser player; that one is built separately with
+`bun run build:web`, which writes static assets to `dist-web/`.
 
 ### Local Testing
 

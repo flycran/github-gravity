@@ -1,6 +1,6 @@
 # GitHub Gravity
 
-![CI](https://github.com/actions/typescript-action/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/flycran/github-gravity/actions/workflows/ci.yml/badge.svg)
 ![Coverage](./badges/coverage.svg)
 
 让你的 GitHub 贡献图在重力作用下掉落，与自定义文字碰撞，生成精美的 SVG 动画。
@@ -10,6 +10,12 @@
 ## 预览
 
 ![Gravity Animation](https://raw.githubusercontent.com/flycran/github-gravity/output/gravity.svg)
+
+## 在线预览
+
+在浏览器里直接试用：调整参数、上传字体文件或填写字体 URL，然后播放查看效果。
+
+<https://flycran.github.io/github-gravity/>
 
 ## 灵感来源
 
@@ -44,7 +50,7 @@
 | `height` | ❌ | `150` | 物理世界高度。⚠️ 会影响布局与 SVG 尺寸 |
 | `size` | ❌ | `4` | 贡献方块边长。⚠️ 会影响物理表现 |
 | `interval` | ❌ | `1.5` | 贡献方块间距。⚠️ 会影响物理表现 |
-| `font-path` | ❌ | 内置字体 | 自定义字体文件（`.ttf`/`.otf`），相对仓库根目录。⚠️ 部分字体可能无法正常加载 |
+| `font-path` | ❌ | 内置字体 | 自定义字体文件（`.ttf`/`.otf`），相对仓库根目录，也可以直接给 `http(s)` 链接。⚠️ 部分字体可能无法正常加载 |
 
 ### 减小文件体积
 
@@ -74,8 +80,8 @@
 `size` 和 `interval` 排布，文字以 `width` 居中，下落高度由 `height` 决定——请成套调整并核对
 效果，不要只改其中一个。
 
-`font-path` 用于替换碰撞字体。默认使用内置的 Liberation Serif Bold，因为它轮廓规整、能稳定
-三角化。自定义字体有风险：
+`font-path` 用于替换碰撞字体，可以给本地 `.ttf`/`.otf` 路径，也可以直接给 `http(s)` 链接。
+默认使用内置的 Liberation Serif Bold，因为它轮廓规整、能稳定三角化。自定义字体有风险：
 
 - 未闭合或自相交的轮廓，大多数渲染器会静默忽略，但物理碰撞体使用的三角化算法会直接报错。
 - 部分字体根本无法被 opentype.js 解析（例如很常见的 DejaVu 系列，会因 GSUB 表解析失败）。
@@ -140,6 +146,8 @@ npm run test
 ```bash
 npm run bundle
 ```
+
+Action 的打包产物不包含网页版，网页版用 `bun run build:web` 单独构建，静态资源输出到 `dist-web/`。
 
 ### 本地测试
 
