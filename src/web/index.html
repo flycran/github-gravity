@@ -63,6 +63,9 @@
       flex-direction: column;
       gap: 10px;
       overflow-y: auto;
+      /* 越过 #options 的右内边距，让滚动条贴到侧栏最右侧；内容位置由等宽内边距保持 */
+      margin-right: -14px;
+      padding-right: 14px;
     }
 
     #options label {
@@ -90,6 +93,20 @@
 
     #options input:not([type="checkbox"]) {
       width: 100%;
+    }
+
+    #options .advanced-fields {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-top: 10px;
+    }
+
+    #options summary {
+      cursor: pointer;
+      font-size: 12px;
+      color: #555;
+      user-select: none;
     }
 
     #options .field {
@@ -301,21 +318,6 @@
             step="any"
             placeholder="留空则模拟到静止" /></label
         >
-        <label>
-          压缩容差 (px) / Tolerance<input
-            name="compressionTolerance"
-            type="number"
-            value="0.5"
-            min="0"
-            step="0.5" />
-        </label>
-        <label>
-          压缩算法 / Algorithm<select name="compressionAlgorithm">
-            <option value="Greedy" selected>Greedy（快）</option>
-            <option value="DP">DP（最优·慢）</option>
-            <option value="RDP">RDP（最快）</option>
-          </select>
-        </label>
         <label
           >字号 / Font size<input
             name="fontSize"
@@ -330,63 +332,83 @@
             value="50"
             min="0" /></label
         >
-        <label
-          >显示缩放 / Scale<input
-            name="scale"
-            type="number"
-            value="3"
-            min="1"
-            step="any" /></label
-        >
-        <label
-          >播放倍速 / Speed<input
-            name="speed"
-            type="number"
-            value="3"
-            min="1"
-            step="any" /></label
-        >
-        <div class="field-group">
-          <span class="field-title">上传字体 / Upload font</span>
-          <div class="field">
-            <label class="upload">
-              <input
-                id="font"
-                name="font"
-                type="file"
-                accept=".ttf,.otf"
-                hidden />
-              <span id="font-label">选择文件</span>
+        <details class="advanced">
+          <summary>高级设置 / Advanced</summary>
+          <div class="advanced-fields">
+            <label
+              >显示缩放 / Scale<input
+                name="scale"
+                type="number"
+                value="3"
+                min="1"
+                step="any" /></label
+            >
+            <label
+              >播放倍速 / Speed<input
+                name="speed"
+                type="number"
+                value="3"
+                min="1"
+                step="any" /></label
+            >
+            <div class="field-group">
+              <span class="field-title">上传字体 / Upload font</span>
+              <div class="field">
+                <label class="upload">
+                  <input
+                    id="font"
+                    name="font"
+                    type="file"
+                    accept=".ttf,.otf"
+                    hidden />
+                  <span id="font-label">选择文件</span>
+                </label>
+                <button
+                  id="clear-font"
+                  type="button"
+                  title="清除已上传字体"
+                  aria-label="清除已上传字体">
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="12"
+                    height="12"
+                    aria-hidden="true">
+                    <path
+                      d="M4 4l8 8M12 4l-8 8"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                      stroke-linecap="round" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <label
+              >字体 URL / Font URL<input
+                id="font-url"
+                name="fontUrl"
+                placeholder="二选一：上传文件或填 URL" /></label
+            >
+            <label>
+              压缩容差 (px) / Tolerance<input
+                name="compressionTolerance"
+                type="number"
+                value="0.5"
+                min="0"
+                step="0.5" />
             </label>
-            <button
-              id="clear-font"
-              type="button"
-              title="清除已上传字体"
-              aria-label="清除已上传字体">
-              <svg
-                viewBox="0 0 16 16"
-                width="12"
-                height="12"
-                aria-hidden="true">
-                <path
-                  d="M4 4l8 8M12 4l-8 8"
-                  stroke="currentColor"
-                  stroke-width="1.6"
-                  stroke-linecap="round" />
-              </svg>
-            </button>
+            <label>
+              压缩算法 / Algorithm<select name="compressionAlgorithm">
+                <option value="Greedy" selected>Greedy（快）</option>
+                <option value="DP">DP（最优·慢）</option>
+                <option value="RDP">RDP（最快）</option>
+              </select>
+            </label>
+            <label class="inline">
+              <input name="disableCompression" type="checkbox" />禁用压缩 / No
+              compression
+            </label>
           </div>
-        </div>
-        <label
-          >字体 URL / Font URL<input
-            id="font-url"
-            name="fontUrl"
-            placeholder="二选一：上传文件或填 URL" /></label
-        >
-        <label class="inline">
-          <input name="disableCompression" type="checkbox" />禁用压缩 / No
-          compression
-        </label>
+        </details>
       </div>
       <button id="generate" type="submit">生成</button>
     </form>
