@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1.0,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="robots" content="noindex" />
+    <title>Rapier 碰撞箱调试</title>
+    <style>
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    #word {
+      position: fixed;
+      inset: 0;
+    }
+    #hud {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      background: #161b22cc;
+      font-size: 12px;
+      backdrop-filter: blur(4px);
+    }
+    #hud button {
+      padding: 4px 10px;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      background: #21262d;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+    }
+    #hud button:hover {
+      background: #30363d;
+    }
+    #hint {
+      position: fixed;
+      right: 12px;
+      bottom: 12px;
+      font-size: 12px;
+      color: #6e7681;
+    }
+    </style>
+  </head>
+  <body>
+    <div id="word"></div>
+    <div id="hud">
+      <button id="toggle" type="button">暂停</button>
+      <button id="step" type="button">单步</button>
+      <button id="reset" type="button">重置</button>
+      <span id="status">运行中 · 0 步</span>
+    </div>
+    <div id="hint">拖拽平移 · 滚轮缩放 · 灰色为固定体，绿色为动态体</div>
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>

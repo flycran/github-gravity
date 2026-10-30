@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import * as core from '@actions/core'
-import { gensvg } from './gensvg.js'
+import { gensvg } from './utils/gensvg.js'
 
 /** 读取可选数字输入，未填写时返回 undefined，由库使用默认值 */
 function getOptionalNumber(name: string): number | undefined {

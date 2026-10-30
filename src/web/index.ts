@@ -1,5 +1,4 @@
-import { gensvg } from '../gensvg'
-import type { SimulationOptions } from '../physics'
+import { GensvgOptions, gensvg } from '../utils/gensvg'
 
 /** 内置字体：浏览器读不到本地文件，直接从仓库获取 */
 const DEFAULT_FONT_URL =
@@ -24,7 +23,7 @@ let duration = 0
 let playing = false
 
 /** 读取表单选项，空值不传，由 startSimulation 回退到默认值 */
-async function readOptions(data: FormData): Promise<SimulationOptions> {
+async function readOptions(data: FormData): Promise<GensvgOptions> {
   const str = (key: string): string | undefined => {
     const value = String(data.get(key) ?? '').trim()
     return value === '' ? undefined : value
@@ -45,7 +44,6 @@ async function readOptions(data: FormData): Promise<SimulationOptions> {
     shape: data.get('shape') === 'square' ? 'square' : 'circle',
     backgroundColor: str('backgroundColor'),
     textColor: str('textColor'),
-    stepTime: num('stepTime'),
     compressionTolerance: num('compressionTolerance'),
     compressionAlgorithm:
       algorithm === 'DP' || algorithm === 'RDP' || algorithm === 'Greedy'
@@ -76,6 +74,11 @@ function renderProgress(ms: number) {
   timeLabel.textContent = `${(ms / 1000).toFixed(2)}s / ${(duration / 1000).toFixed(2)}s`
 }
 
+/** SMIL 文档时间秒 → 整毫秒：浏览器返回值带量化误差（如 6.831998825073242），直接与 dur 毫秒值比较会永远差零点几毫秒 */
+function currentMs(svg: SVGSVGElement): number {
+  return Math.round(svg.getCurrentTime() * 1000)
+}
+
 // SMIL 文档时间是播放状态的唯一来源，进度条只是它的视图
 function seek(ms: number) {
   getSvg()?.setCurrentTime(ms / 1000)
@@ -86,7 +89,7 @@ function tick() {
   if (!playing) return
   const svg = getSvg()
   if (!svg) return
-  const ms = svg.getCurrentTime() * 1000
+  const ms = currentMs(svg)
   if (ms >= duration) {
     // 冻结 SMIL 时钟并钉在末帧，避免文档时间空转
     svg.pauseAnimations()
@@ -108,7 +111,7 @@ function togglePlay() {
     playing = false
   } else {
     // 播放到末尾后再次播放回到起点
-    if (svg.getCurrentTime() * 1000 >= duration) svg.setCurrentTime(0)
+    if (currentMs(svg) >= duration) svg.setCurrentTime(0)
     svg.unpauseAnimations()
     playing = true
     requestAnimationFrame(tick)

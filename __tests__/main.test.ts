@@ -15,9 +15,9 @@ import {
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import * as gensvgModule from '../src/gensvg'
 import { run } from '../src/main'
-import { SimulationOptions } from '../src/physics'
+import * as gensvgModule from '../src/utils/gensvg'
+import { SimulationOptions } from '../src/utils/physics'
 
 let captured: SimulationOptions | null
 

@@ -5,39 +5,56 @@ import {
   RigidBodyDesc,
   World
 } from '@dimforge/rapier2d-compat'
-import { FontSource, getTextPaths } from './parseTextPath'
 import {
-  ContributionJson,
-  HEIGHT,
-  INTERVAL,
+  DEFAULT_OPTIONS,
+  MAX_STEPS,
   SCALE,
-  SIZE,
-  SimulationResult,
-  WIDTH
-} from './utils'
+  TIMESTEP,
+  VELOCITY_THRESHOLD
+} from '../const'
+import { GensvgOptions } from './gensvg'
 import {
   fetchContributions,
   INTENSITY_COLORS,
   RawContributionDay
-} from './utils/githubContributions'
+} from './githubContributions'
+import { FontSource, getTextPaths } from './parseTextPath'
 import {
   CompressedTrajectoryPoint,
   simplifyTrajectoryDP,
   simplifyTrajectoryGreedy,
   simplifyTrajectoryRDP
-} from './utils/simplifyTrajectory'
+} from './simplifyTrajectory'
 
 /** 压缩算法名 → 实现，供 compressionAlgorithm 选项分发 */
 const COMPRESSION_ALGORITHMS: Record<
   NonNullable<SimulationOptions['compressionAlgorithm']>,
   (
-    trajectory: { x: number; y: number }[],
-    tolerance: number
+    trajectory: Point[],
+    tolerance: number,
+    maxRotationError?: number
   ) => CompressedTrajectoryPoint[]
 > = {
   DP: simplifyTrajectoryDP,
   RDP: simplifyTrajectoryRDP,
   Greedy: simplifyTrajectoryGreedy
+}
+
+/** 把自转角解缠绕到与上一帧连续（差收敛到 ±π 内），保证轨迹角度可直接线性插值 */
+function unwrapRotation(next: number, prev: number): number {
+  let rotation = next
+  while (rotation - prev > Math.PI) rotation -= Math.PI * 2
+  while (prev - rotation > Math.PI) rotation += Math.PI * 2
+  return rotation
+}
+
+/** 方形自转轨迹的角度插值误差上限，与位置的压缩容差相互独立 */
+const MAX_ROTATION_ERROR = (3 * Math.PI) / 180
+
+export interface ContributionJson {
+  date: string
+  color: string
+  trajectory: Point[]
 }
 
 export class Contribution implements ContributionJson {
@@ -46,28 +63,45 @@ export class Contribution implements ContributionJson {
   y: number
   color: string
 
-  trajectory: {
-    x: number
-    y: number
-  }[]
+  trajectory: Point[]
+
+  /** 方形碰撞体会翻滚，需要记录自转角；圆形旋转不影响外观 */
+  trackRotation: boolean
 
   collider: Collider
 
-  constructor(contributionDay: RawContributionDay, collider: Collider) {
+  constructor(
+    contributionDay: RawContributionDay,
+    collider: Collider,
+    trackRotation: boolean
+  ) {
     this.collider = collider
+    this.trackRotation = trackRotation
     this.date = contributionDay.date
     this.color = INTENSITY_COLORS[contributionDay.intensity]
     const pos = collider.translation()
     this.x = pos.x
     this.y = pos.y
-    this.trajectory = [{ x: pos.x, y: pos.y }]
+    this.trajectory = []
+    this.trajectory.push(this.recordPoint(pos))
   }
 
   update() {
     const pos = this.collider.translation()
     this.x = pos.x
     this.y = pos.y
-    this.trajectory.push({ x: pos.x, y: pos.y })
+    this.trajectory.push(this.recordPoint(pos))
+  }
+
+  /** 记录当前时刻的位置；方形再记录自转角（解缠绕保持连续） */
+  private recordPoint(pos: { x: number; y: number }): Point {
+    if (!this.trackRotation) return { x: pos.x, y: pos.y }
+    const last = this.trajectory[this.trajectory.length - 1]
+    return {
+      x: pos.x,
+      y: pos.y,
+      rotation: unwrapRotation(this.collider.rotation(), last?.rotation ?? 0)
+    }
   }
 
   getTrajectory() {
@@ -86,8 +120,8 @@ export class Contribution implements ContributionJson {
 async function createWord(width: number, height: number) {
   await init()
   // 重力
-  const world = new World({ x: 0.0, y: -30 })
-  world.lengthUnit = 32
+  const world = new World({ x: 0.0, y: -9.81 })
+  world.timestep = TIMESTEP
 
   // 地面
   world.createCollider(
@@ -107,8 +141,85 @@ async function createWord(width: number, height: number) {
   return world
 }
 
-/** 速度小于此阈值视为静止 */
-const VELOCITY_THRESHOLD = 1e-3
+export interface TextPathResult {
+  paths: {
+    vertices: Float32Array
+    indices: Uint32Array
+  }
+  pathData: string
+  rect: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+}
+
+export interface Point {
+  x: number
+  y: number
+  /**
+   * 方块自转角（弧度，已解缠绕保持连续，可直接线性插值）。
+   * 方形碰撞体会翻滚才记录；圆形旋转不影响外观，不携带
+   */
+  rotation?: number
+  /**
+   * 启用压缩时，该点与前一个保留点的原始索引差，用于还原关键帧的时间位置；
+   * 未压缩时不存在，消费端回退到 SMIL 默认的均分时间
+   */
+  span?: number
+}
+
+/**
+ * 计算所有字形的整体包围盒
+ * @param textPaths
+ * @param param1
+ * @returns
+ */
+export function getTextBoundBox(
+  textPaths: TextPathResult[],
+  {
+    width,
+    height,
+    textTop
+  }: Required<Pick<SimulationOptions, 'width' | 'height' | 'textTop'>>
+) {
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity
+  for (const { rect } of textPaths) {
+    if (rect.x < minX) minX = rect.x
+    if (rect.x + rect.width > maxX) maxX = rect.x + rect.width
+    // 翻转 Y：opentype 字形在基线下方（y 为负），碰撞体需要正向
+    const top = -rect.y
+    const bottom = -(rect.y + rect.height)
+    if (bottom < minY) minY = bottom
+    if (top > maxY) maxY = top
+  }
+  const bboxCenterX = (minX + maxX) / 2
+  const offsetX = width / 2 - bboxCenterX
+  // 文字顶部距离世界顶部的距离
+  const centerY = height - textTop - maxY
+
+  return {
+    offsetX,
+    centerY
+  }
+}
+
+export interface SimulationResult {
+  stepCount: number
+  time: number
+  textPaths: Pick<TextPathResult, 'rect' | 'pathData'>[]
+  contributions: ContributionJson[]
+  /** 用户名文字碰撞体的三角网格（世界坐标），用于 web 端渲染 */
+  textTriangles: number[][]
+  /** 文字在物理世界中的 X 偏移量 */
+  offsetX: number
+  /** 文字在物理世界中的 Y 偏移量 */
+  centerY: number
+}
 
 export interface SimulationOptions {
   username: string
@@ -117,8 +228,6 @@ export interface SimulationOptions {
   textTop?: number
   /** 字体大小 */
   fontSize?: number
-  /** 一步的时间，单位为ms，越小速度越快 */
-  stepTime?: number
   /**
    * 轨迹压缩容差，单位 SVG 像素。播放时每个原始时刻的插值位置与真实位置的
    * 偏差不超过该值；0 为完全无损（位置与节奏都精确），仅压缩匀速直线段和静止段。
@@ -133,10 +242,6 @@ export interface SimulationOptions {
   compressionAlgorithm?: 'Greedy' | 'DP' | 'RDP'
   /** 贡献方块的形状：circle（圆形）或 square（方形）。圆形物理模拟更丝滑，不容易穿模。 */
   shape?: 'circle' | 'square'
-  /** 背景颜色，默认透明 */
-  backgroundColor?: string
-  /** 文字颜色，默认黑色 */
-  textColor?: string
   /**
    * 物理世界宽度，默认 300。
    * 谨慎修改：方块横向布局、文字居中位置与最终 SVG 宽度都由它推算，改动后请自行核对效果
@@ -171,21 +276,21 @@ export interface SimulationOptions {
 export async function startSimulation({
   username,
   text = username,
-  textTop = 50,
-  fontSize = 80,
-  stepTime = 8,
-  shape = 'circle',
-  backgroundColor = 'transparent',
-  textColor = 'black',
-  compressionTolerance = 0.5,
-  disableCompression = false,
-  compressionAlgorithm = 'Greedy',
-  width = WIDTH,
-  height = HEIGHT,
-  size = SIZE,
-  interval = INTERVAL,
-  font
+  ...resetOpions
 }: SimulationOptions): Promise<SimulationResult> {
+  const {
+    textTop,
+    shape,
+    compressionAlgorithm,
+    compressionTolerance,
+    disableCompression,
+    font,
+    size,
+    interval,
+    fontSize,
+    width,
+    height
+  } = Object.assign({}, DEFAULT_OPTIONS, resetOpions)
   const world = await createWord(width, height)
   const contributionsSet = new Set<Contribution>()
 
@@ -196,24 +301,12 @@ export async function startSimulation({
   // 创建用户名文字静止刚体（居中对齐），同时收集三角网格数据
   const textPaths = await getTextPaths(text, fontSize, font)
 
-  // 计算所有字形的整体包围盒（翻转 Y 轴后）
-  let minX = Infinity,
-    maxX = -Infinity,
-    minY = Infinity,
-    maxY = -Infinity
-  for (const { rect } of textPaths) {
-    if (rect.x < minX) minX = rect.x
-    if (rect.x + rect.width > maxX) maxX = rect.x + rect.width
-    // 翻转 Y：opentype 字形在基线下方（y 为负），碰撞体需要正向
-    const top = -rect.y
-    const bottom = -(rect.y + rect.height)
-    if (bottom < minY) minY = bottom
-    if (top > maxY) maxY = top
-  }
-  const bboxCenterX = (minX + maxX) / 2
-  const offsetX = width / 2 - bboxCenterX
-  // 文字顶部距离世界顶部的距离
-  const centerY = height - textTop - maxY
+  const { centerY, offsetX } = getTextBoundBox(textPaths, {
+    width,
+    height,
+    textTop
+  })
+
   const textTriangles: number[][] = []
 
   for (const { paths } of textPaths) {
@@ -272,16 +365,18 @@ export async function startSimulation({
         // 动态刚体：圆形物理模拟更丝滑，不容易穿模
         const colliderDesc =
           shape === 'square'
-            ? ColliderDesc.cuboid(size / 2, size / 2).setFriction(0.2)
-            : ColliderDesc.ball(size / 2).setFriction(0.2)
+            ? ColliderDesc.cuboid(size / 2, size / 2).setFriction(0.1)
+            : ColliderDesc.ball(size / 2).setFriction(0.1)
         const boxCollider = world.createCollider(
           colliderDesc,
           world.createRigidBody(
-            RigidBodyDesc.dynamic().setCcdEnabled(true).setTranslation(x, y)
+            RigidBodyDesc.dynamic().setGravityScale(2).setTranslation(x, y)
           )
         )
 
-        contributionsSet.add(new Contribution(contributionDay, boxCollider))
+        contributionsSet.add(
+          new Contribution(contributionDay, boxCollider, shape === 'square')
+        )
       }
     }
   }
@@ -316,6 +411,12 @@ export async function startSimulation({
     }
 
     if (areAllCollidersSleeping()) break
+    // 方块参数异常时模拟可能永不静止，超出最大步数直接报错而不是无限挂起
+    if (stepCount >= MAX_STEPS) {
+      throw new Error(
+        `Simulation failed to settle within ${MAX_STEPS} steps (${MAX_STEPS * TIMESTEP} simulated seconds)`
+      )
+    }
   }
 
   const endTime = Date.now()
@@ -323,7 +424,6 @@ export async function startSimulation({
   return {
     stepCount,
     time: endTime - startTime,
-    shape,
     contributions: Array.from(contributionsSet).map((contribution) => {
       const json = contribution.toJSON()
       return !disableCompression
@@ -331,7 +431,8 @@ export async function startSimulation({
             ...json,
             trajectory: COMPRESSION_ALGORITHMS[compressionAlgorithm](
               json.trajectory,
-              tolerance
+              tolerance,
+              shape === 'square' ? MAX_ROTATION_ERROR : 0
             )
           }
         : json
@@ -342,12 +443,6 @@ export async function startSimulation({
     })),
     textTriangles,
     offsetX,
-    centerY,
-    stepTime,
-    backgroundColor,
-    textColor,
-    width,
-    height,
-    size
+    centerY
   }
 }

@@ -1,6 +1,8 @@
 export interface CompressedTrajectoryPoint {
   x: number
   y: number
+  /** 与 x/y 同义的方块自转角（弧度），仅方形轨迹携带 */
+  rotation?: number
   /**
    * 与前一个保留点之间的原始轨迹点数（首点为 0）。
    * 全部 span 之和等于原始点数 - 1，消费端可累计 span 还原每个关键帧的时间位置
@@ -8,7 +10,7 @@ export interface CompressedTrajectoryPoint {
   span: number
 }
 
-type Point = { x: number; y: number }
+type Point = { x: number; y: number; rotation?: number }
 
 /**
  * 点 i 相对段 (s, e) 的时刻插值偏差平方。
@@ -22,25 +24,41 @@ function deviationSq(p: Point, s: Point, e: Point, t: number): number {
 }
 
 /**
+ * 点 i 相对段 (s, e) 的自转角插值误差（弧度）。轨迹已解缠绕保持连续，
+ * 与位置共用同一套时间插值，maxRotationError > 0 时作为独立约束参与段可行性判断；
+ * 轨迹不带 rotation 时恒为 0，不影响位置度量。
+ */
+function rotationError(p: Point, s: Point, e: Point, t: number): number {
+  const dr =
+    (p.rotation ?? 0) -
+    ((s.rotation ?? 0) + ((e.rotation ?? 0) - (s.rotation ?? 0)) * t)
+  return Math.abs(dr)
+}
+
+/**
  * 段 (s, e) 内各点的最大时刻插值偏差平方，与 limitSq 比较可全程避免开方。
- * 任一点超限立即返回 Infinity（提前终止，长不可行段的开销为常数级）。
+ * 位置或角度任一维度超限立即返回 Infinity（提前终止，长不可行段的开销为常数级）。
  */
 function segmentMaxDeviationSq(
   trajectory: Point[],
   s: number,
   e: number,
-  limitSq: number
+  limitSq: number,
+  maxRotationError: number
 ): number {
   let max = 0
   const denom = e - s
   for (let i = s + 1; i < e; i++) {
-    const d = deviationSq(
-      trajectory[i],
-      trajectory[s],
-      trajectory[e],
-      (i - s) / denom
-    )
+    const t = (i - s) / denom
+    const d = deviationSq(trajectory[i], trajectory[s], trajectory[e], t)
     if (d > limitSq) return Infinity
+    if (
+      maxRotationError > 0 &&
+      rotationError(trajectory[i], trajectory[s], trajectory[e], t) >
+        maxRotationError
+    ) {
+      return Infinity
+    }
     if (d > max) max = d
   }
   return max
@@ -77,10 +95,14 @@ function collectResult(
  * - 任意被丢弃点在其原始时刻与相邻关键帧插值位置的偏差不超过 tolerance；
  * - 相同容差下关键帧数不多于其他策略（全局最优），输出体积最小；
  * - span >= 1（首点为 0），span 总和等于原始点数 - 1。
+ *
+ * @param maxRotationError 自转角插值误差上限（弧度），>0 时作为独立约束参与
+ *   段可行性判断，旋转与位置一同保真；0 为忽略旋转
  */
 export function simplifyTrajectoryDP(
   trajectory: Point[],
-  tolerance: number = 0
+  tolerance: number = 0,
+  maxRotationError: number = 0
 ): CompressedTrajectoryPoint[] {
   assertTolerance(tolerance)
   const n = trajectory.length
@@ -98,7 +120,11 @@ export function simplifyTrajectoryDP(
     for (let j = i - 1; j >= 0; j--) {
       // 即使段 (j, i) 可行也不可能给出更优解时，跳过段检查
       if (cost[j] + 1 >= cost[i]) continue
-      if (segmentMaxDeviationSq(trajectory, j, i, limitSq) > limitSq) continue
+      if (
+        segmentMaxDeviationSq(trajectory, j, i, limitSq, maxRotationError) >
+        limitSq
+      )
+        continue
       cost[i] = cost[j] + 1
       parent[i] = j
     }
@@ -120,10 +146,13 @@ export function simplifyTrajectoryDP(
  * - 任意被丢弃点在其原始时刻与相邻关键帧插值位置的偏差不超过 tolerance；
  * - 贪心分裂非全局最优，关键帧数一般多于动态规划；
  * - span >= 1（首点为 0），span 总和等于原始点数 - 1。
+ *
+ * @param maxRotationError 含义同 simplifyTrajectoryDP 的同名参数
  */
 export function simplifyTrajectoryRDP(
   trajectory: Point[],
-  tolerance: number = 0
+  tolerance: number = 0,
+  maxRotationError: number = 0
 ): CompressedTrajectoryPoint[] {
   assertTolerance(tolerance)
   const n = trajectory.length
@@ -140,26 +169,42 @@ export function simplifyTrajectoryRDP(
     const [start, end] = stack.pop()!
     if (end - start < 2) continue
 
-    // 找开区间内时刻插值偏差最大的点
+    // 找开区间内时刻插值偏差最大的点：位置与角度各跟踪一个，谁超限用谁分段
     let maxSq = 0
-    let maxIdx = -1
+    let maxSqIdx = -1
+    let maxRot = 0
+    let maxRotIdx = -1
     for (let i = start + 1; i < end; i++) {
+      const t = (i - start) / (end - start)
       const d = deviationSq(
         trajectory[i],
         trajectory[start],
         trajectory[end],
-        (i - start) / (end - start)
+        t
       )
       if (d > maxSq) {
         maxSq = d
-        maxIdx = i
+        maxSqIdx = i
+      }
+      if (maxRotationError > 0) {
+        const dr = rotationError(
+          trajectory[i],
+          trajectory[start],
+          trajectory[end],
+          t
+        )
+        if (dr > maxRot) {
+          maxRot = dr
+          maxRotIdx = i
+        }
       }
     }
 
     // 最大偏差仍在容差内则整段并为一个插值段，否则在最差点处分段
-    if (maxSq > limitSq) {
-      keep[maxIdx] = true
-      stack.push([start, maxIdx], [maxIdx, end])
+    if (maxSq > limitSq || maxRot > maxRotationError) {
+      const splitIdx = maxSq > limitSq ? maxSqIdx : maxRotIdx
+      keep[splitIdx] = true
+      stack.push([start, splitIdx], [splitIdx, end])
     }
   }
 
@@ -176,10 +221,13 @@ export function simplifyTrajectoryRDP(
  * - 任意被丢弃点在其原始时刻与相邻关键帧插值位置的偏差不超过 tolerance；
  * - 单遍、不回溯，关键帧数通常介于 RDP 与动态规划之间；
  * - span >= 1（首点为 0），span 总和等于原始点数 - 1。
+ *
+ * @param maxRotationError 含义同 simplifyTrajectoryDP 的同名参数
  */
 export function simplifyTrajectoryGreedy(
   trajectory: Point[],
-  tolerance: number = 0
+  tolerance: number = 0,
+  maxRotationError: number = 0
 ): CompressedTrajectoryPoint[] {
   assertTolerance(tolerance)
   const n = trajectory.length
@@ -196,7 +244,8 @@ export function simplifyTrajectoryGreedy(
     let e = s + 1
     while (
       e < n - 1 &&
-      segmentMaxDeviationSq(trajectory, s, e + 1, limitSq) <= limitSq
+      segmentMaxDeviationSq(trajectory, s, e + 1, limitSq, maxRotationError) <=
+        limitSq
     ) {
       e++
     }
@@ -220,9 +269,10 @@ export function simplifyTrajectoryGreedy(
  */
 export function simplifyTrajectory(
   trajectory: Point[],
-  tolerance: number = 0
+  tolerance: number = 0,
+  maxRotationError: number = 0
 ): CompressedTrajectoryPoint[] {
-  return simplifyTrajectoryGreedy(trajectory, tolerance)
+  return simplifyTrajectoryGreedy(trajectory, tolerance, maxRotationError)
 }
 
 /**
