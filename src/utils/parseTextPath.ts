@@ -59,8 +59,6 @@ export async function loadFontFromPath(fontPath: string): Promise<ArrayBuffer> {
 export async function loadFontFromUrl(
   fontUrl: string | URL
 ): Promise<ArrayBuffer> {
-  console.log(fontUrl)
-
   let url: URL
   try {
     url = new URL(fontUrl)
@@ -98,8 +96,6 @@ async function resolveFontData(font: FontSource): Promise<ArrayBuffer> {
   if (ArrayBuffer.isView(font)) return viewToArrayBuffer(font)
   // http(s) 开头的字符串视为远程 URL，其余字符串视为本地路径
   if (font instanceof URL || /^https?:\/\//i.test(font)) {
-    console.log(1)
-
     return loadFontFromUrl(font)
   }
   return loadFontFromPath(font)
