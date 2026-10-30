@@ -284,32 +284,42 @@ export interface SimulationOptions {
   font?: FontSource
 }
 
-export async function startSimulation({
-  username,
-  text = username,
-  ...resetOpions
-}: SimulationOptions): Promise<SimulationResult> {
+/** 创建完成的世界与其中的物体引用，可交给渲染器预览或自行迭代 */
+export interface SimulationWorld {
+  world: World
+  /** 贡献方块（含轨迹记录器），每步迭代后调用 update 采集轨迹 */
+  contributions: Contribution[]
+  textPaths: TextPathResult[]
+  /** 文字碰撞体的三角网格（世界坐标），用于 web 端渲染 */
+  textTriangles: number[][]
+  /** 文字在物理世界中的 X 偏移量 */
+  offsetX: number
+  /** 文字在物理世界中的 Y 偏移量 */
+  centerY: number
+}
+
+/**
+ * 创建模拟世界并放入全部物体：地面、墙壁、用户名文字碰撞体与贡献方块。
+ * 与迭代逻辑分离，便于把 world 交给渲染器（如 web/rapier 调试页）直接预览；
+ * startSimulation 在它返回后负责迭代与轨迹收集
+ */
+export async function createSimulationWorld(
+  options: SimulationOptions
+): Promise<SimulationWorld> {
   const {
+    username,
+    text = username,
     textTop,
     shape,
-    compressionAlgorithm,
-    compressionTolerance,
-    disableCompression,
     font,
     size,
     interval,
     fontSize,
     width,
-    height,
-    maxSimulationTime,
-    speed
-  } = withDefaults(DEFAULT_OPTIONS, resetOpions)
+    height
+  } = withDefaults(DEFAULT_OPTIONS, options)
   const world = await createWord(width, height)
-  const contributionsSet = new Set<Contribution>()
-
-  // 容差从 SVG 像素换算回物理坐标单位，让压缩函数与渲染缩放解耦；
-  // 显式禁用压缩时保留原始轨迹，消费端回退到 SMIL 默认均分时间
-  const tolerance = compressionTolerance / SCALE
+  const contributions: Contribution[] = []
 
   // 创建用户名文字静止刚体（居中对齐），同时收集三角网格数据
   const textPaths = await getTextPaths(text, fontSize, font)
@@ -391,16 +401,44 @@ export async function startSimulation({
           )
         )
 
-        contributionsSet.add(
+        contributions.push(
           new Contribution(contributionDay, boxCollider, shape === 'square')
         )
       }
     }
   }
 
+  return {
+    world,
+    contributions,
+    textPaths,
+    textTriangles,
+    offsetX,
+    centerY
+  }
+}
+
+export async function startSimulation(
+  options: SimulationOptions
+): Promise<SimulationResult> {
+  const {
+    shape,
+    compressionAlgorithm,
+    compressionTolerance,
+    disableCompression,
+    maxSimulationTime,
+    speed
+  } = withDefaults(DEFAULT_OPTIONS, options)
+  const { world, contributions, textPaths, textTriangles, offsetX, centerY } =
+    await createSimulationWorld(options)
+
+  // 容差从 SVG 像素换算回物理坐标单位，让压缩函数与渲染缩放解耦；
+  // 显式禁用压缩时保留原始轨迹，消费端回退到 SMIL 默认均分时间
+  const tolerance = compressionTolerance / SCALE
+
   /** 判断所有 collider 的刚体是否都已静止（线速度与角速度均低于阈值） */
   function areAllCollidersSleeping(): boolean {
-    for (const contribution of contributionsSet) {
+    for (const contribution of contributions) {
       const body = contribution.collider.parent()
       if (body) {
         const linvel = body.linvel()
@@ -423,7 +461,7 @@ export async function startSimulation({
     world.step()
     stepCount++
 
-    for (const contribution of contributionsSet) {
+    for (const contribution of contributions) {
       contribution.update()
     }
 
@@ -448,7 +486,7 @@ export async function startSimulation({
   return {
     stepCount,
     time: endTime - startTime,
-    contributions: Array.from(contributionsSet).map((contribution) => {
+    contributions: contributions.map((contribution) => {
       const json = contribution.toJSON()
       return !disableCompression
         ? {
