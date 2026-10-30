@@ -2,16 +2,19 @@ import { GensvgOptions } from './utils/gensvg'
 
 export const SCALE = 1
 
-export const FRICTION = 0.2
+export const FRICTION = 0.3
 
 /** 固定物理步长（秒） */
 export const TIMESTEP = 1 / 30
 
+/** 重力倍数 */
+export const GRAVITY = 1.5
+
 /** 速度小于此阈值视为静止 */
-export const VELOCITY_THRESHOLD = 1e-3
+export const VELOCITY_THRESHOLD = 0.1
 
 /** 未设置最大模拟时间时的模拟步数上限，超出视为无法收敛，直接抛错终止模拟 */
-export const MAX_STEPS = 36000
+export const MAX_STEPS = 9000
 
 // 先取值再构造 URL，避免打包器把「new URL(字面量, import.meta.url)」识别为资源声明
 // 而重排内置字体的输出位置

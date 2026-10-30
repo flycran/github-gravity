@@ -8,6 +8,7 @@ import {
 import {
   DEFAULT_OPTIONS,
   FRICTION,
+  GRAVITY,
   MAX_STEPS,
   SCALE,
   TIMESTEP,
@@ -384,7 +385,9 @@ export async function startSimulation({
         const boxCollider = world.createCollider(
           colliderDesc,
           world.createRigidBody(
-            RigidBodyDesc.dynamic().setGravityScale(2).setTranslation(x, y)
+            RigidBodyDesc.dynamic()
+              .setGravityScale(GRAVITY)
+              .setTranslation(x, y)
           )
         )
 
@@ -424,7 +427,7 @@ export async function startSimulation({
       contribution.update()
     }
 
-    if (areAllCollidersSleeping()) break
+    if (stepCount > 2 && areAllCollidersSleeping()) break
     // 最大模拟时间以播放时长计：模拟时长达到它乘以倍速即停止，返回已模拟出的轨迹
     if (
       maxSimulationTime !== undefined &&
