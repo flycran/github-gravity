@@ -49,6 +49,10 @@
     #hud button:hover {
       background: #30363d;
     }
+    #timeline {
+      width: 180px;
+      accent-color: #58a6ff;
+    }
     #hint {
       position: fixed;
       right: 12px;
@@ -64,9 +68,12 @@
       <button id="toggle" type="button">暂停</button>
       <button id="step" type="button">单步</button>
       <button id="reset" type="button">重置</button>
+      <input id="timeline" type="range" min="0" max="0" value="0" step="1" />
       <span id="status">运行中 · 0 步</span>
     </div>
-    <div id="hint">拖拽平移 · 滚轮缩放 · 灰色为固定体，绿色为动态体</div>
+    <div id="hint">
+      拖拽平移 · 滚轮缩放 · 灰色为固定体，绿色为动态体 · 拖动进度条回溯历史
+    </div>
     <script type="module" src="./index.ts"></script>
   </body>
 </html>

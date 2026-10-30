@@ -40,6 +40,11 @@ const RULER_TICK_COLOR = 0x484f58
 const RULER_BORDER_COLOR = 0x30363d
 const GUIDE_COLOR = 0x58a6ff
 
+/** 每隔多少步记录一次位姿快照，供进度条时间回溯 */
+const SNAPSHOT_INTERVAL = 2
+/** 最多保留的快照数，达到后停止记录以控制内存占用 */
+const MAX_SNAPSHOTS = 3600
+
 /** 候选刻度步长，从密到疏 */
 const RULER_STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]
 
@@ -112,15 +117,17 @@ function drawCollider(
   graphics: Graphics,
   collider: Collider,
   lineWidth: number,
-  mapper: ScreenMapper
+  mapper: ScreenMapper,
+  /** 回溯查看时的位姿覆盖；不传则读碰撞体的实时位姿 */
+  pose?: { x: number; y: number; rotation: number }
 ) {
   const style = {
     color: collider.parent()?.isFixed() ? STATIC_COLOR : DYNAMIC_COLOR,
     width: lineWidth
   }
 
-  const origin = collider.translation()
-  const angle = collider.rotation()
+  const origin = pose ?? collider.translation()
+  const angle = pose ? pose.rotation : collider.rotation()
   const cos = Math.cos(angle)
   const sin = Math.sin(angle)
   const { toScreen } = mapper
@@ -260,6 +267,7 @@ export async function runWorldViewer({
   const stepButton = document.getElementById('step') as HTMLButtonElement
   const resetButton = document.getElementById('reset') as HTMLButtonElement
   const statusLabel = document.getElementById('status') as HTMLSpanElement
+  const timeline = document.getElementById('timeline') as HTMLInputElement
 
   let world = await createWorld()
   let stepCount = 0
@@ -270,17 +278,64 @@ export async function runWorldViewer({
   /** 单帧最多补的步数，避免切回标签页时一次性追帧过多；会按倍速缩放 */
   const MAX_STEPS_PER_FRAME = 5
 
+  /** 固定顺序的碰撞箱列表，世界创建后不再增删，供快照按下标对齐 */
+  let colliders: Collider[] = []
+  /** 位姿快照 [x, y, rotation] × n，与 historySteps 一一对应 */
+  let history: Float32Array[] = []
+  let historySteps: number[] = []
+  /** 正在回溯查看的快照下标，-1 表示跟随现实最新状态 */
+  let viewingIndex = -1
+
+  /** 清空回溯历史，并按当前世界重建碰撞箱下标 */
+  function resetHistory() {
+    colliders = []
+    world.forEachCollider((collider) => colliders.push(collider))
+    history = []
+    historySteps = []
+    viewingIndex = -1
+    timeline.max = '0'
+    timeline.value = '0'
+  }
+
+  function recordSnapshot() {
+    const data = new Float32Array(colliders.length * 3)
+    for (let i = 0; i < colliders.length; i++) {
+      const origin = colliders[i].translation()
+      data[i * 3] = origin.x
+      data[i * 3 + 1] = origin.y
+      data[i * 3 + 2] = colliders[i].rotation()
+    }
+    history.push(data)
+    historySteps.push(stepCount)
+  }
+
   function renderColliders() {
     // 线宽按缩放反向换算，保证屏幕上的描边始终是 1.5px
     const lineWidth = 1.5 / viewport.scale.x
     graphics.clear()
-    world.forEachCollider((collider) =>
-      drawCollider(graphics, collider, lineWidth, mapper)
-    )
+    const snapshot = viewingIndex >= 0 ? history[viewingIndex] : undefined
+    if (snapshot) {
+      // 回溯查看：按快照位姿绘制，不改动物理世界本身
+      for (let i = 0; i < colliders.length; i++) {
+        drawCollider(graphics, colliders[i], lineWidth, mapper, {
+          x: snapshot[i * 3],
+          y: snapshot[i * 3 + 1],
+          rotation: snapshot[i * 3 + 2]
+        })
+      }
+    } else {
+      world.forEachCollider((collider) =>
+        drawCollider(graphics, collider, lineWidth, mapper)
+      )
+    }
   }
 
   function renderStatus() {
-    statusLabel.textContent = `${running ? '运行中' : '已暂停'} · ${stepCount} 步 · ×${playbackSpeed} · ${world.colliders.len()} 个碰撞箱`
+    const stepLabel =
+      viewingIndex >= 0
+        ? `查看 ${historySteps[viewingIndex] ?? 0} / ${stepCount} 步`
+        : `${stepCount} 步`
+    statusLabel.textContent = `${running ? '运行中' : '已暂停'} · ${stepLabel} · ×${playbackSpeed} · ${world.colliders.len()} 个碰撞箱`
   }
 
   // ---- 屏幕空间的尺子与辅助线：不随 viewport 缩放 ----
@@ -466,7 +521,18 @@ export async function runWorldViewer({
       while (accumulator >= timestep) {
         world.step()
         stepCount++
+        if (
+          history.length < MAX_SNAPSHOTS &&
+          stepCount % SNAPSHOT_INTERVAL === 0
+        ) {
+          recordSnapshot()
+        }
         accumulator -= timestep
+      }
+      if (history.length > 0) {
+        timeline.max = String(history.length - 1)
+        // 跟随现实时进度条钉在最右；回溯查看时保持用户拖的位置
+        if (viewingIndex === -1) timeline.value = timeline.max
       }
     }
     renderColliders()
@@ -480,15 +546,29 @@ export async function runWorldViewer({
 
   toggleButton.addEventListener('click', () => {
     running = !running
+    // 继续播放时从现实最新状态出发，退出回溯查看
+    if (running) viewingIndex = -1
     toggleButton.textContent = running ? '暂停' : '继续'
     renderStatus()
   })
 
   stepButton.addEventListener('click', () => {
+    viewingIndex = -1
     world.step()
     stepCount++
     // 手动单步后清掉累积量，避免继续播放时立刻补一步
     accumulator = 0
+    renderColliders()
+    renderStatus()
+  })
+
+  timeline.addEventListener('input', () => {
+    // 拖动回溯时自动暂停，物理世界停在现实最新状态不受影响
+    if (running) {
+      running = false
+      toggleButton.textContent = '继续'
+    }
+    viewingIndex = Number(timeline.value)
     renderColliders()
     renderStatus()
   })
@@ -504,6 +584,7 @@ export async function runWorldViewer({
       previous.free()
       stepCount = 0
       accumulator = 0
+      resetHistory()
       renderColliders()
       renderStatus()
     } finally {
@@ -521,6 +602,7 @@ export async function runWorldViewer({
     )
   })
 
+  resetHistory()
   renderColliders()
   renderRuler()
   renderGuides()
