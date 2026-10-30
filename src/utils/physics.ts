@@ -357,7 +357,8 @@ export async function startSimulation({
 
   const rowLen = githubContributions.contributions.length
   const rowWidth = size * rowLen + interval * (rowLen - 1)
-  const left = (width - rowWidth) / 2
+  // left 是矩阵左边缘，而碰撞体按中心定位，首列中心需再右移半个方块
+  const left = (width - rowWidth) / 2 + size / 2
   const top = height * 1
 
   for (let rowIndex = 0; rowIndex < rowLen; rowIndex++) {
