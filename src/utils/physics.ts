@@ -7,6 +7,7 @@ import {
 } from '@dimforge/rapier2d-compat'
 import {
   DEFAULT_OPTIONS,
+  FRICTION,
   MAX_STEPS,
   SCALE,
   TIMESTEP,
@@ -328,7 +329,7 @@ export async function startSimulation({
       flippedVertices[i + 1] = -vertices[i + 1]
     }
     world.createCollider(
-      ColliderDesc.trimesh(flippedVertices, indices),
+      ColliderDesc.trimesh(flippedVertices, indices).setFriction(FRICTION),
       world.createRigidBody(
         RigidBodyDesc.fixed()
           .setCcdEnabled(true)
@@ -372,10 +373,11 @@ export async function startSimulation({
         const x = left + (interval + size) * rowIndex
         const y = top + (interval + size) * dayOfWeek
         // 动态刚体：圆形物理模拟更丝滑，不容易穿模
-        const colliderDesc =
+        const colliderDesc = (
           shape === 'square'
-            ? ColliderDesc.cuboid(size / 2, size / 2).setFriction(0.1)
-            : ColliderDesc.ball(size / 2).setFriction(0.1)
+            ? ColliderDesc.cuboid(size / 2, size / 2)
+            : ColliderDesc.ball(size / 2)
+        ).setFriction(FRICTION)
         const boxCollider = world.createCollider(
           colliderDesc,
           world.createRigidBody(
