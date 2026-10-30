@@ -266,9 +266,10 @@ export interface SimulationOptions {
    */
   interval?: number
   /**
-   * 最大模拟时间（毫秒，物理模拟时间），没有默认值。
-   * 达到后停止模拟，直接返回已模拟出的轨迹，不再等待全部方块静止；
-   * 不传则一直模拟到全部静止，超出 MAX_STEPS 步仍未静止会直接报错
+   * 最大模拟时间（秒，按动画播放时长计），没有默认值。
+   * 模拟时长达到它乘以播放速度后停止模拟，直接返回已模拟出的轨迹，
+   * 不再等待全部方块静止；不传则一直模拟到全部静止，
+   * 超出 MAX_STEPS 步仍未静止会直接报错
    */
   maxSimulationTime?: number
   /**
@@ -299,7 +300,8 @@ export async function startSimulation({
     fontSize,
     width,
     height,
-    maxSimulationTime
+    maxSimulationTime,
+    speed
   } = withDefaults(DEFAULT_OPTIONS, resetOpions)
   const world = await createWord(width, height)
   const contributionsSet = new Set<Contribution>()
@@ -422,10 +424,10 @@ export async function startSimulation({
     }
 
     if (areAllCollidersSleeping()) break
-    // 设了最大模拟时间：到达时限直接停止，返回已模拟出的轨迹，不再等全部静止
+    // 最大模拟时间以播放时长计：模拟时长达到它乘以倍速即停止，返回已模拟出的轨迹
     if (
       maxSimulationTime !== undefined &&
-      stepCount * TIMESTEP * 1000 >= maxSimulationTime
+      stepCount * TIMESTEP >= maxSimulationTime * speed
     ) {
       break
     }

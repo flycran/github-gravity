@@ -38,6 +38,13 @@ inputs:
       All algorithms preserve speed and timing — bounces and stops stay keyframes.
     required: false
     default: Greedy
+  max-simulation-time:
+    description: >-
+      Maximum simulation time in seconds, counted as animation playback duration:
+      the simulated time is this value multiplied by the playback speed. When reached,
+      the simulation stops and the trajectory simulated so far is returned instead of
+      waiting for every block to settle. Leave empty to simulate until all blocks rest.
+    required: false
   shape:
     description: Shape of the contribution blocks (circle or square). Circle has smoother physics and less likely to clip through obstacles.
     required: false

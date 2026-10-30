@@ -134,11 +134,11 @@ describe('action input plumbing', () => {
   })
 
   it('forwards max-simulation-time as a number', async () => {
-    setInputs({ 'MAX-SIMULATION-TIME': '5000' })
+    setInputs({ 'MAX-SIMULATION-TIME': '5' })
 
     await run()
 
-    expect(captured).toMatchObject({ maxSimulationTime: 5000 })
+    expect(captured).toMatchObject({ maxSimulationTime: 5 })
   })
 
   it('leaves max-simulation-time undefined when the input is empty', async () => {

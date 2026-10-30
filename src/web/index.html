@@ -267,10 +267,11 @@
             value="#eb510a" /></label
         >
         <label
-          >最大模拟时间 (ms) / Max simulation time<input
+          >最大模拟时间 (s) / Max simulation time<input
             name="maxSimulationTime"
             type="number"
-            min="1"
+            min="0.1"
+            step="any"
             placeholder="留空则模拟到静止" /></label
         >
         <label>
@@ -307,14 +308,16 @@
             name="scale"
             type="number"
             value="3"
-            min="1" /></label
+            min="1"
+            step="any" /></label
         >
         <label
           >播放倍速 / Speed<input
             name="speed"
             type="number"
             value="3"
-            min="1" /></label
+            min="1"
+            step="any" /></label
         >
         <div class="field-group">
           <span class="field-title">上传字体 / Upload font</span>

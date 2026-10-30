@@ -34,7 +34,7 @@ function getAlgorithm(name: string): 'Greedy' | 'DP' | 'RDP' | undefined {
  * - font-size: 文字大小，默认为 80
  * - compression-tolerance: 轨迹压缩容差（SVG 像素），默认为 0.5
  * - compression-algorithm: 轨迹压缩算法（Greedy / DP / RDP），默认为 Greedy
- * - max-simulation-time: 最大模拟时间（毫秒），达到后返回已模拟的轨迹；不传则模拟到静止为止
+ * - max-simulation-time: 最大模拟时间（秒，按播放时长计，会乘以倍速换算模拟时长），达到后返回已模拟的轨迹；不传则模拟到静止为止
  * - scale: SVG 显示缩放，默认为 3
  * - speed: 播放倍速，默认为 3
  * - width / height / size / interval / font-path: 高级自定义项，改动影响渲染效果

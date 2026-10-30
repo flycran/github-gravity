@@ -257,17 +257,18 @@ describe('full pipeline integration', () => {
   })
 
   it('stops the simulation once maxSimulationTime is reached', async () => {
-    // 200ms 时限 ≈ 6 步，dur = stepCount * TIMESTEP * 1000 / speed ≈ 67ms；
-    // 不设时限时模拟到静止需要数千毫秒，超出 100ms 即证明在时限处停止
     const svg = await gensvg({
       username: 'testuser',
       text: 'Hi',
       fontSize: 40,
-      maxSimulationTime: 200
+      maxSimulationTime: 0.2
     })
 
+    // dur = 播放时长 = 模拟时长 / speed：0.2s × 3 倍速 = 0.6s 模拟时长 ≈ 18 步，
+    // dur ≈ 200ms（浮点边界可能多走 1 步）；未截断时为数千毫秒
     const dur = parseFloat(svg.match(/dur="(\d+(?:\.\d+)?)ms"/)?.[1] ?? '0')
-    expect(dur).toBeLessThan(100)
+    expect(dur).toBeGreaterThanOrEqual(200)
+    expect(dur).toBeLessThan(250)
   })
 
   it('renders with an explicitly provided font path', async () => {
