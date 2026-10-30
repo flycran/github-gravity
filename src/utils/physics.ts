@@ -12,7 +12,6 @@ import {
   TIMESTEP,
   VELOCITY_THRESHOLD
 } from '../const'
-import { GensvgOptions } from './gensvg'
 import {
   fetchContributions,
   INTENSITY_COLORS,
@@ -25,6 +24,7 @@ import {
   simplifyTrajectoryGreedy,
   simplifyTrajectoryRDP
 } from './simplifyTrajectory'
+import { withDefaults } from './withDefaults'
 
 /** 压缩算法名 → 实现，供 compressionAlgorithm 选项分发 */
 const COMPRESSION_ALGORITHMS: Record<
@@ -263,6 +263,12 @@ export interface SimulationOptions {
    */
   interval?: number
   /**
+   * 最大模拟时间（毫秒，物理模拟时间），没有默认值。
+   * 达到后停止模拟，直接返回已模拟出的轨迹，不再等待全部方块静止；
+   * 不传则一直模拟到全部静止，超出 MAX_STEPS 步仍未静止会直接报错
+   */
+  maxSimulationTime?: number
+  /**
    * 自定义字体（.ttf/.otf）：本地路径、远程 URL（字符串或 URL 对象），或
    * 已读取好的 Buffer / ArrayBuffer（如 `files[0].arrayBuffer()` 的结果），
    * 默认使用内置的 Liberation Serif Bold。
@@ -289,8 +295,9 @@ export async function startSimulation({
     interval,
     fontSize,
     width,
-    height
-  } = Object.assign({}, DEFAULT_OPTIONS, resetOpions)
+    height,
+    maxSimulationTime
+  } = withDefaults(DEFAULT_OPTIONS, resetOpions)
   const world = await createWord(width, height)
   const contributionsSet = new Set<Contribution>()
 
@@ -411,8 +418,15 @@ export async function startSimulation({
     }
 
     if (areAllCollidersSleeping()) break
-    // 方块参数异常时模拟可能永不静止，超出最大步数直接报错而不是无限挂起
-    if (stepCount >= MAX_STEPS) {
+    // 设了最大模拟时间：到达时限直接停止，返回已模拟出的轨迹，不再等全部静止
+    if (
+      maxSimulationTime !== undefined &&
+      stepCount * TIMESTEP * 1000 >= maxSimulationTime
+    ) {
+      break
+    }
+    // 方块参数异常时模拟可能永不静止，未设时限时超出保护步数直接报错而不是无限挂起
+    if (maxSimulationTime === undefined && stepCount >= MAX_STEPS) {
       throw new Error(
         `Simulation failed to settle within ${MAX_STEPS} steps (${MAX_STEPS * TIMESTEP} simulated seconds)`
       )

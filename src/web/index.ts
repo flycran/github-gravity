@@ -22,7 +22,7 @@ const clearFontBtn = document.getElementById('clear-font') as HTMLButtonElement
 let duration = 0
 let playing = false
 
-/** 读取表单选项，空值不传，由 startSimulation 回退到默认值 */
+/** 读取表单选项，未填写的字段值为 undefined */
 async function readOptions(data: FormData): Promise<GensvgOptions> {
   const str = (key: string): string | undefined => {
     const value = String(data.get(key) ?? '').trim()
@@ -44,6 +44,7 @@ async function readOptions(data: FormData): Promise<GensvgOptions> {
     shape: data.get('shape') === 'square' ? 'square' : 'circle',
     backgroundColor: str('backgroundColor'),
     textColor: str('textColor'),
+    maxSimulationTime: num('maxSimulationTime'),
     compressionTolerance: num('compressionTolerance'),
     compressionAlgorithm:
       algorithm === 'DP' || algorithm === 'RDP' || algorithm === 'Greedy'

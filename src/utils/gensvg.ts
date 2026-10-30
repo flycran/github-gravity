@@ -1,6 +1,7 @@
 import { DEFAULT_OPTIONS, SCALE, TIMESTEP } from '../const'
 import { ContributionJson, SimulationOptions, startSimulation } from './physics'
 import { buildKeyTimes } from './simplifyTrajectory'
+import { withDefaults } from './withDefaults'
 
 export interface GensvgOptions extends SimulationOptions {
   /** 缩放系数，默认为3 */
@@ -21,7 +22,7 @@ export interface GensvgOptions extends SimulationOptions {
  * @returns 完整的 SVG 字符串
  */
 export async function gensvg(options: GensvgOptions): Promise<string> {
-  const op = Object.assign({}, DEFAULT_OPTIONS, options)
+  const op = withDefaults(DEFAULT_OPTIONS, options)
   const result = await startSimulation(op)
   const svgWidth = op.width * SCALE
   const svgHeight = op.height * SCALE

@@ -238,6 +238,38 @@ describe('full pipeline integration', () => {
     expect(custom).toContain('viewBox="0 0 400 200"')
   })
 
+  it('treats explicitly undefined options as unset', async () => {
+    const omitted = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40
+    })
+    const explicitUndefined = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40,
+      compressionTolerance: undefined,
+      maxSimulationTime: undefined
+    })
+
+    // 键携带 undefined 与键不存在等效
+    expect(explicitUndefined).toBe(omitted)
+  })
+
+  it('stops the simulation once maxSimulationTime is reached', async () => {
+    // 200ms 时限 ≈ 6 步，dur = stepCount * TIMESTEP * 1000 / speed ≈ 67ms；
+    // 不设时限时模拟到静止需要数千毫秒，超出 100ms 即证明在时限处停止
+    const svg = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40,
+      maxSimulationTime: 200
+    })
+
+    const dur = parseFloat(svg.match(/dur="(\d+(?:\.\d+)?)ms"/)?.[1] ?? '0')
+    expect(dur).toBeLessThan(100)
+  })
+
   it('renders with an explicitly provided font path', async () => {
     const font = new URL('../public/LiberationSerif-Bold.ttf', import.meta.url)
       .pathname

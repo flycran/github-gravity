@@ -18,5 +18,6 @@
     "strictNullChecks": true,
     "target": "ES2022"
   },
-  "include": ["src", "!src/web/**/*", "__tests__", "__fixtures__"]
+  "exclude": ["src/web/**/*"],
+  "include": ["src", "__tests__", "__fixtures__"]
 }

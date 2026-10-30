@@ -8,7 +8,7 @@ export const TIMESTEP = 1 / 30
 /** 速度小于此阈值视为静止 */
 export const VELOCITY_THRESHOLD = 1e-3
 
-/** 模拟最大步数，超出视为无法收敛，直接抛错终止模拟 */
+/** 未设置最大模拟时间时的模拟步数上限，超出视为无法收敛，直接抛错终止模拟 */
 export const MAX_STEPS = 36000
 
 // 先取值再构造 URL，避免打包器把「new URL(字面量, import.meta.url)」识别为资源声明
@@ -19,7 +19,7 @@ const BUNDLED_FONT_HREF = '../public/LiberationSerif-Bold.ttf'
 export const DEFAULT_FONT = new URL(BUNDLED_FONT_HREF, import.meta.url)
 
 export const DEFAULT_OPTIONS: Required<
-  Omit<GensvgOptions, 'username' | 'text'>
+  Omit<GensvgOptions, 'username' | 'text' | 'maxSimulationTime'>
 > = {
   width: 300,
   height: 150,
