@@ -23,13 +23,7 @@ import {
 } from '@dimforge/rapier2d-compat'
 import { Application, Graphics, Text } from 'pixi.js'
 import { Viewport } from 'pixi-viewport'
-import {
-  BOUNDS,
-  createDemoWorld,
-  TIMESTEP,
-  WORLD_HEIGHT,
-  WORLD_WIDTH
-} from './demoWorld'
+import { BOUNDS, createDemoWorld, height, TIMESTEP, width } from './demoWorld'
 
 const BACKGROUND_COLOR = 0x0d1117
 /** 固定刚体的碰撞箱颜色 */
@@ -181,8 +175,8 @@ function drawCollider(
     // 半空间无界，只画穿过原点、与法线垂直的一段线
     const normalX = shape.normal.x * cos - shape.normal.y * sin
     const normalY = shape.normal.x * sin + shape.normal.y * cos
-    const tangentX = -normalY * WORLD_WIDTH
-    const tangentY = normalX * WORLD_WIDTH
+    const tangentX = -normalY * width
+    const tangentY = normalX * width
     const from = toScreen(origin.x - tangentX, origin.y - tangentY)
     const to = toScreen(origin.x + tangentX, origin.y + tangentY)
     graphics.moveTo(from.x, from.y).lineTo(to.x, to.y)
@@ -206,14 +200,14 @@ async function main() {
   const viewport = new Viewport({
     screenWidth: window.innerWidth,
     screenHeight: window.innerHeight,
-    worldWidth: WORLD_WIDTH,
-    worldHeight: WORLD_HEIGHT,
+    worldWidth: width,
+    worldHeight: height,
     events: app.renderer.events,
     ticker: app.ticker
   })
   viewport.drag().wheel().pinch()
   viewport.fit()
-  viewport.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2)
+  viewport.moveCenter(width / 2, height / 2)
   app.stage.addChild(viewport)
 
   const graphics = new Graphics()
@@ -467,12 +461,7 @@ async function main() {
 
   window.addEventListener('resize', () => {
     app.renderer.resize(window.innerWidth, window.innerHeight)
-    viewport.resize(
-      window.innerWidth,
-      window.innerHeight,
-      WORLD_WIDTH,
-      WORLD_HEIGHT
-    )
+    viewport.resize(window.innerWidth, window.innerHeight, width, height)
   })
 
   renderColliders()

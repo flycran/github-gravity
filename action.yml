@@ -54,6 +54,18 @@ inputs:
     description: Color of the collision text (CSS color value)
     required: false
     default: black
+  scale:
+    description: >-
+      Display zoom factor: the SVG width and height attributes are the physics
+      dimensions multiplied by it, while the viewBox keeps the raw physics size.
+    required: false
+    default: '3'
+  speed:
+    description: >-
+      Playback speed multiplier: the animation duration is the simulated time
+      divided by it.
+    required: false
+    default: '3'
   width:
     description: >-
       Width of the physics world. Change with caution: the horizontal block layout, the text

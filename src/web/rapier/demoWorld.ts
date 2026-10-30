@@ -23,8 +23,8 @@ const CIRCLE_GAP = 12
 /** 演示世界的物理边界（y 轴向上），同时决定坐标映射与相机取景 */
 export const BOUNDS = { minX: 0, maxX: 200, minY: 0, maxY: 100 }
 
-export const WORLD_WIDTH = BOUNDS.maxX - BOUNDS.minX
-export const WORLD_HEIGHT = BOUNDS.maxY - BOUNDS.minY
+export const width = BOUNDS.maxX - BOUNDS.minX
+export const height = BOUNDS.maxY - BOUNDS.minY
 
 /** 演示场景：地面 + 下落的正方形矩阵 + 下方的圆形障碍 */
 export function createDemoWorld(): World {
@@ -34,23 +34,19 @@ export function createDemoWorld(): World {
 
   // 地面
   world.createCollider(
-    ColliderDesc.cuboid(WORLD_WIDTH / 2, 1).setFriction(0.2),
-    world.createRigidBody(
-      RigidBodyDesc.fixed().setTranslation(WORLD_WIDTH / 2, -1)
-    )
+    ColliderDesc.cuboid(width / 2, 1).setFriction(0.2),
+    world.createRigidBody(RigidBodyDesc.fixed().setTranslation(width / 2, -1))
   )
   // 墙壁
   world.createCollider(
-    ColliderDesc.cuboid(1, WORLD_HEIGHT / 2).setFriction(0.2),
+    ColliderDesc.cuboid(1, height).setFriction(0.2),
     world.createRigidBody(
-      RigidBodyDesc.fixed().setTranslation(WORLD_WIDTH + 1, WORLD_HEIGHT / 2)
+      RigidBodyDesc.fixed().setTranslation(width + 1, height)
     )
   )
   world.createCollider(
-    ColliderDesc.cuboid(1, WORLD_HEIGHT / 2).setFriction(0.2),
-    world.createRigidBody(
-      RigidBodyDesc.fixed().setTranslation(-1, WORLD_HEIGHT / 2)
-    )
+    ColliderDesc.cuboid(1, height).setFriction(0.2),
+    world.createRigidBody(RigidBodyDesc.fixed().setTranslation(-1, height))
   )
 
   // 正方形按尺寸 + 间隙排布，矩阵整体以 (centerX, MATRIX_Y) 为中心

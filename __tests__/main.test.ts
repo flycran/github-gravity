@@ -17,9 +17,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { run } from '../src/main'
 import * as gensvgModule from '../src/utils/gensvg'
-import { SimulationOptions } from '../src/utils/physics'
+import { GensvgOptions } from '../src/utils/gensvg'
 
-let captured: SimulationOptions | null
+let captured: GensvgOptions | null
 
 /** main.ts 读取的全部输入（@actions/core 按 INPUT_<NAME> 大写读取，短横线原样保留） */
 const INPUT_NAMES = [
@@ -38,7 +38,9 @@ const INPUT_NAMES = [
   'SIZE',
   'INTERVAL',
   'FONT-PATH',
-  'MAX-SIMULATION-TIME'
+  'MAX-SIMULATION-TIME',
+  'SCALE',
+  'SPEED'
 ]
 
 function setInputs(values: Record<string, string>) {
@@ -89,6 +91,8 @@ describe('action input plumbing', () => {
     expect(captured?.compressionTolerance).toBeUndefined()
     expect(captured?.compressionAlgorithm).toBeUndefined()
     expect(captured?.maxSimulationTime).toBeUndefined()
+    expect(captured?.scale).toBeUndefined()
+    expect(captured?.speed).toBeUndefined()
     expect(captured?.width).toBeUndefined()
     expect(captured?.height).toBeUndefined()
     expect(captured?.size).toBeUndefined()
@@ -143,6 +147,14 @@ describe('action input plumbing', () => {
     await run()
 
     expect(captured?.maxSimulationTime).toBeUndefined()
+  })
+
+  it('forwards scale and speed as numbers', async () => {
+    setInputs({ SCALE: '2', SPEED: '4' })
+
+    await run()
+
+    expect(captured).toMatchObject({ scale: 2, speed: 4 })
   })
 
   it('forwards a custom font path', async () => {
