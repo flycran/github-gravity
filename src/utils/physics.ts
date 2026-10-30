@@ -125,17 +125,19 @@ async function createWord(width: number, height: number) {
 
   // 地面
   world.createCollider(
-    ColliderDesc.cuboid(width, 1),
-    world.createRigidBody(RigidBodyDesc.fixed().setTranslation(0, -1))
+    ColliderDesc.cuboid(width / 2, 1),
+    world.createRigidBody(RigidBodyDesc.fixed().setTranslation(width / 2, -1))
   )
   // 墙壁
   world.createCollider(
     ColliderDesc.cuboid(1, height),
-    world.createRigidBody(RigidBodyDesc.fixed().setTranslation(width, 0))
+    world.createRigidBody(
+      RigidBodyDesc.fixed().setTranslation(width + 1, height)
+    )
   )
   world.createCollider(
     ColliderDesc.cuboid(1, height),
-    world.createRigidBody(RigidBodyDesc.fixed().setTranslation(-1, 0))
+    world.createRigidBody(RigidBodyDesc.fixed().setTranslation(-1, height))
   )
 
   return world
