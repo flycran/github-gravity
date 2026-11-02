@@ -1,8 +1,5 @@
 import { GensvgOptions, gensvg } from '../utils/gensvg'
-
-/** 内置字体：浏览器读不到本地文件，直接从仓库获取 */
-const DEFAULT_FONT_URL =
-  'https://raw.githubusercontent.com/flycran/github-gravity/main/public/LiberationSerif-Bold.ttf'
+import { DEFAULT_FONT_URL } from './const'
 
 const canvas = document.getElementById('canvas') as HTMLDivElement
 const form = document.getElementById('options') as HTMLFormElement

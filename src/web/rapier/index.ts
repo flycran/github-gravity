@@ -8,7 +8,7 @@
 
 import { createSimulationWorld } from '../../utils/physics'
 import { DEFAULT_FONT_URL } from '../const'
-import { BOUNDS, createDemoWorld, TIMESTEP } from './demoWorld'
+import { BOUNDS, TIMESTEP } from './demoWorld'
 import { runWorldViewer } from './viewer'
 
 await runWorldViewer({
