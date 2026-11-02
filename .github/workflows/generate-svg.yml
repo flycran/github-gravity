@@ -35,6 +35,7 @@ jobs:
         with:
           username: Orta
           text: Github gravity
+          font-size: 42
           output-path: deploy/gravity.svg
 
       - name: Deploy to output branch

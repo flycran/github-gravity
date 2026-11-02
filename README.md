@@ -40,7 +40,7 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 | `username` | ✅ | - | GitHub username to fetch contributions for |
 | `text` | ❌ | `username` value | Text to display as collision obstacles |
 | `output-path` | ❌ | `gravity.svg` | Path to write the generated SVG file |
-| `font-size` | ❌ | `80` | Font size of the collision text |
+| `font-size` | ❌ | `48` | Font size of the collision text |
 | `compression-tolerance` | ❌ | `0.5` | Trajectory compression tolerance in SVG pixels. At every original moment, the animated position stays within this distance of the real one. The default fits most cases; `0` is lossless in both position and timing (see below) |
 | `compression-algorithm` | ❌ | `Greedy` | Trajectory compression algorithm: `Greedy` (fast), `DP` (smallest SVG), `RDP` (fastest). See below for the trade-offs |
 | `max-simulation-time` | ❌ | - | Maximum simulation time in seconds, counted as playback duration (simulated time = this value × `speed`). When reached, the trajectory simulated so far is returned instead of waiting for every block to settle. Leave empty to simulate until all blocks rest |
