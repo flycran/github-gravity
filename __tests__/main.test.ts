@@ -81,7 +81,7 @@ describe('action input plumbing', () => {
     expect(captured).toMatchObject({
       username: 'testuser',
       text: 'testuser',
-      fontSize: 80,
+      fontSize: 48,
       shape: 'circle',
       textTop: 50,
       backgroundColor: 'transparent',

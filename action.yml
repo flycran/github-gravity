@@ -20,7 +20,7 @@ inputs:
   font-size:
     description: Font size of the collision text
     required: false
-    default: '80'
+    default: '48'
   compression-tolerance:
     description: >-
       Trajectory compression tolerance in SVG pixels. At every original moment of the

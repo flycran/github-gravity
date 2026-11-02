@@ -39,7 +39,7 @@
 | `username` | ✅ | - | GitHub 用户名，用于获取贡献数据 |
 | `text` | ❌ | `username` 的值 | 作为碰撞障碍物的文字 |
 | `output-path` | ❌ | `gravity.svg` | SVG 输出路径 |
-| `font-size` | ❌ | `80` | 碰撞文字大小 |
+| `font-size` | ❌ | `48` | 碰撞文字大小 |
 | `compression-tolerance` | ❌ | `0.5` | 轨迹压缩容差（SVG 像素）。播放时每个原始时刻的动画位置与真实位置的偏差不超过该值。默认值适合多数场景；`0` 为完全无损（位置与节奏都精确）（见下文） |
 | `compression-algorithm` | ❌ | `Greedy` | 轨迹压缩算法：`Greedy`（快）、`DP`（体积最小）、`RDP`（最快），差异见下文 |
 | `max-simulation-time` | ❌ | - | 最大模拟时间（秒），按播放时长计（模拟时间 = 该值 × `speed`）。到时即返回已模拟的轨迹，不再等待所有方块静止；留空则模拟至全部静止 |
