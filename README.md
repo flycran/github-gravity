@@ -43,10 +43,13 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 | `font-size` | ❌ | `80` | Font size of the collision text |
 | `compression-tolerance` | ❌ | `0.5` | Trajectory compression tolerance in SVG pixels. At every original moment, the animated position stays within this distance of the real one. The default fits most cases; `0` is lossless in both position and timing (see below) |
 | `compression-algorithm` | ❌ | `Greedy` | Trajectory compression algorithm: `Greedy` (fast), `DP` (smallest SVG), `RDP` (fastest). See below for the trade-offs |
+| `max-simulation-time` | ❌ | - | Maximum simulation time in seconds, counted as playback duration (simulated time = this value × `speed`). When reached, the trajectory simulated so far is returned instead of waiting for every block to settle. Leave empty to simulate until all blocks rest |
 | `shape` | ❌ | `circle` | Shape of contribution blocks: `circle` or `square` |
 | `text-top` | ❌ | `50` | Distance from the top of the world to the text |
 | `background-color` | ❌ | `transparent` | Background color of the SVG (CSS color value) |
 | `text-color` | ❌ | `black` | Color of the collision text (CSS color value) |
+| `scale` | ❌ | `3` | Display zoom factor: the SVG `width`/`height` are the physics dimensions × scale, while the viewBox keeps the raw physics size |
+| `speed` | ❌ | `3` | Playback speed multiplier: the animation duration is the simulated time ÷ speed |
 | `width` | ❌ | `300` | Width of the physics world. ⚠️ Affects layout and SVG size |
 | `height` | ❌ | `150` | Height of the physics world. ⚠️ Affects layout and SVG size |
 | `size` | ❌ | `4` | Side length of each contribution block. ⚠️ Affects physics |
@@ -85,7 +88,9 @@ In most cases, just keep the default.
 `width`, `height`, `size` and `interval` change the physics world itself, not just the output
 size. The contribution blocks are laid out from `size` and `interval`, the text is centered
 with `width`, and the drop height follows `height` — change them together and re-check the
-result rather than tweaking one in isolation.
+result rather than tweaking one in isolation. If the simulation fails to settle after your
+changes, set `max-simulation-time` to cap the simulation and still get the trajectory up to
+that point.
 
 `font-path` swaps the collision font. It accepts a local `.ttf`/`.otf` path or an `http(s)` URL.
 The bundled Liberation Serif Bold is used by default because its contours are clean and
