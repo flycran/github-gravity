@@ -26,7 +26,7 @@ mock.module('../src/utils/githubContributions.ts', () => ({
   INTENSITY_COLORS: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39']
 }))
 
-const { gensvg } = await import('../src/gensvg.js')
+const { gensvg } = await import('../src/utils/gensvg.js')
 
 describe('full pipeline integration', () => {
   beforeEach(() => {
@@ -70,6 +70,25 @@ describe('full pipeline integration', () => {
 
     expect(svg).toContain('<rect')
     expect(svg).not.toContain('<circle')
+  })
+
+  it('adds rotation animation for square shapes only', async () => {
+    const square = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40,
+      shape: 'square'
+    })
+    // 方形会翻滚：平移之外再叠加绕方块中心的自转
+    expect(square).toContain('type="rotate"')
+    expect(square).toContain('additive="sum"')
+
+    const circle = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40
+    })
+    expect(circle).not.toContain('type="rotate"')
   })
 
   it('handles empty text gracefully', async () => {
@@ -198,8 +217,10 @@ describe('full pipeline integration', () => {
       text: 'Hi',
       fontSize: 40
     })
+    // viewBox 使用物理坐标（SCALE=1），显示尺寸再乘 scale 选项放大
     expect(dflt).toContain('width="900"')
-    expect(dflt).toContain(`r="${(4 / 2) * 3}"`)
+    expect(dflt).toContain('viewBox="0 0 300 150"')
+    expect(dflt).toContain(`r="${4 / 2}"`)
 
     const custom = await gensvg({
       username: 'testuser',
@@ -213,8 +234,41 @@ describe('full pipeline integration', () => {
 
     expect(custom).toContain('width="1200"')
     expect(custom).toContain('height="600"')
-    expect(custom).toContain(`r="${(6 / 2) * 3}"`)
-    expect(custom).toContain('viewBox="0 0 1200 600"')
+    expect(custom).toContain(`r="${6 / 2}"`)
+    expect(custom).toContain('viewBox="0 0 400 200"')
+  })
+
+  it('treats explicitly undefined options as unset', async () => {
+    const omitted = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40
+    })
+    const explicitUndefined = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40,
+      compressionTolerance: undefined,
+      maxSimulationTime: undefined
+    })
+
+    // 键携带 undefined 与键不存在等效
+    expect(explicitUndefined).toBe(omitted)
+  })
+
+  it('stops the simulation once maxSimulationTime is reached', async () => {
+    const svg = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40,
+      maxSimulationTime: 0.2
+    })
+
+    // dur = 播放时长 = 模拟时长 / speed：0.2s × 3 倍速 = 0.6s 模拟时长 ≈ 18 步，
+    // dur ≈ 200ms（浮点边界可能多走 1 步）；未截断时为数千毫秒
+    const dur = parseFloat(svg.match(/dur="(\d+(?:\.\d+)?)ms"/)?.[1] ?? '0')
+    expect(dur).toBeGreaterThanOrEqual(200)
+    expect(dur).toBeLessThan(250)
   })
 
   it('renders with an explicitly provided font path', async () => {

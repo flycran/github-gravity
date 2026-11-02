@@ -15,29 +15,32 @@ import {
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import * as gensvgModule from '../src/gensvg'
 import { run } from '../src/main'
-import { SimulationOptions } from '../src/physics'
+import * as gensvgModule from '../src/utils/gensvg'
+import { GensvgOptions } from '../src/utils/gensvg'
 
-let captured: SimulationOptions | null
+let captured: GensvgOptions | null
 
-/** main.ts 读取的全部输入（@actions/core 按 INPUT_<NAME> 大写读取） */
+/** main.ts 读取的全部输入（@actions/core 按 INPUT_<NAME> 大写读取，短横线原样保留） */
 const INPUT_NAMES = [
   'USERNAME',
   'TEXT',
-  'OUTPUT_PATH',
-  'FONT_SIZE',
+  'OUTPUT-PATH',
+  'FONT-SIZE',
   'COMPRESSION-TOLERANCE',
   'COMPRESSION-ALGORITHM',
   'SHAPE',
-  'TEXT_TOP',
-  'BACKGROUND_COLOR',
-  'TEXT_COLOR',
+  'TEXT-TOP',
+  'BACKGROUND-COLOR',
+  'TEXT-COLOR',
   'WIDTH',
   'HEIGHT',
   'SIZE',
   'INTERVAL',
-  'FONT_PATH'
+  'FONT-PATH',
+  'MAX-SIMULATION-TIME',
+  'SCALE',
+  'SPEED'
 ]
 
 function setInputs(values: Record<string, string>) {
@@ -84,14 +87,17 @@ describe('action input plumbing', () => {
       backgroundColor: 'transparent',
       textColor: 'black'
     })
-    // 未填写的可选参数不下传，交给库使用默认值
-    expect(captured).not.toHaveProperty('compressionTolerance')
-    expect(captured).not.toHaveProperty('compressionAlgorithm')
-    expect(captured).not.toHaveProperty('width')
-    expect(captured).not.toHaveProperty('height')
-    expect(captured).not.toHaveProperty('size')
-    expect(captured).not.toHaveProperty('interval')
-    expect(captured).not.toHaveProperty('font')
+    // 未填写的可选输入以 undefined 下传
+    expect(captured?.compressionTolerance).toBeUndefined()
+    expect(captured?.compressionAlgorithm).toBeUndefined()
+    expect(captured?.maxSimulationTime).toBeUndefined()
+    expect(captured?.scale).toBeUndefined()
+    expect(captured?.speed).toBeUndefined()
+    expect(captured?.width).toBeUndefined()
+    expect(captured?.height).toBeUndefined()
+    expect(captured?.size).toBeUndefined()
+    expect(captured?.interval).toBeUndefined()
+    expect(captured?.font).toBeUndefined()
   })
 
   it('forwards compression options and world geometry as numbers', async () => {
@@ -127,6 +133,30 @@ describe('action input plumbing', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it('forwards max-simulation-time as a number', async () => {
+    setInputs({ 'MAX-SIMULATION-TIME': '5' })
+
+    await run()
+
+    expect(captured).toMatchObject({ maxSimulationTime: 5 })
+  })
+
+  it('leaves max-simulation-time undefined when the input is empty', async () => {
+    setInputs({ 'MAX-SIMULATION-TIME': '' })
+
+    await run()
+
+    expect(captured?.maxSimulationTime).toBeUndefined()
+  })
+
+  it('forwards scale and speed as numbers', async () => {
+    setInputs({ SCALE: '2', SPEED: '4' })
+
+    await run()
+
+    expect(captured).toMatchObject({ scale: 2, speed: 4 })
+  })
+
   it('forwards a custom font path', async () => {
     setInputs({ 'FONT-PATH': 'assets/Inter-Bold.ttf' })
 
@@ -140,7 +170,7 @@ describe('action input plumbing', () => {
 
     await run()
 
-    expect(captured).not.toHaveProperty('font')
+    expect(captured?.font).toBeUndefined()
   })
 
   it('fails without calling the generator when a numeric input is invalid', async () => {

@@ -8,7 +8,7 @@
  */
 
 import { maxLerpDeviation, sumSpans } from '../__tests__/simplifyHelpers'
-import { startSimulation } from '../src/physics'
+import { startSimulation } from '../src/utils/physics'
 import {
   CompressedTrajectoryPoint,
   simplifyTrajectoryDP,

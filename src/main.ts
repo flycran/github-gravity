@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import * as core from '@actions/core'
-import { gensvg } from './gensvg.js'
+import { gensvg } from './utils/gensvg.js'
 
 /** 读取可选数字输入，未填写时返回 undefined，由库使用默认值 */
 function getOptionalNumber(name: string): number | undefined {
@@ -34,6 +34,9 @@ function getAlgorithm(name: string): 'Greedy' | 'DP' | 'RDP' | undefined {
  * - font-size: 文字大小，默认为 80
  * - compression-tolerance: 轨迹压缩容差（SVG 像素），默认为 0.5
  * - compression-algorithm: 轨迹压缩算法（Greedy / DP / RDP），默认为 Greedy
+ * - max-simulation-time: 最大模拟时间（秒，按播放时长计，会乘以倍速换算模拟时长），达到后返回已模拟的轨迹；不传则模拟到静止为止
+ * - scale: SVG 显示缩放，默认为 3
+ * - speed: 播放倍速，默认为 3
  * - width / height / size / interval / font-path: 高级自定义项，改动影响渲染效果
  *
  * 输出：
@@ -52,6 +55,9 @@ export async function run(): Promise<void> {
     const textColor: string = core.getInput('text-color') || 'black'
     const compressionTolerance = getOptionalNumber('compression-tolerance')
     const compressionAlgorithm = getAlgorithm('compression-algorithm')
+    const maxSimulationTime = getOptionalNumber('max-simulation-time')
+    const scale = getOptionalNumber('scale')
+    const speed = getOptionalNumber('speed')
     const width = getOptionalNumber('width')
     const height = getOptionalNumber('height')
     const size = getOptionalNumber('size')
@@ -71,13 +77,16 @@ export async function run(): Promise<void> {
       textTop,
       backgroundColor,
       textColor,
-      ...(compressionTolerance !== undefined ? { compressionTolerance } : {}),
-      ...(compressionAlgorithm !== undefined ? { compressionAlgorithm } : {}),
-      ...(width !== undefined ? { width } : {}),
-      ...(height !== undefined ? { height } : {}),
-      ...(size !== undefined ? { size } : {}),
-      ...(interval !== undefined ? { interval } : {}),
-      ...(fontPath ? { font: fontPath } : {})
+      compressionTolerance,
+      compressionAlgorithm,
+      maxSimulationTime,
+      scale,
+      speed,
+      width,
+      height,
+      size,
+      interval,
+      font: fontPath || undefined
     })
 
     mkdirSync(dirname(outputPath), { recursive: true })

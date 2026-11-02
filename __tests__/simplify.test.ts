@@ -3,7 +3,7 @@
  * 使用时间插值偏差度量。
  */
 import { describe, expect, it } from 'bun:test'
-import { Point } from '../src/utils'
+import { Point } from '../src/utils/physics'
 import {
   buildKeyTimes,
   CompressedTrajectoryPoint,
@@ -11,11 +11,12 @@ import {
   simplifyTrajectoryGreedy,
   simplifyTrajectoryRDP
 } from '../src/utils/simplifyTrajectory'
-import { maxLerpDeviation, sumSpans } from './simplifyHelpers'
+import { maxLerpDeviation, maxSpinDeviation, sumSpans } from './simplifyHelpers'
 
 type SimplifyFn = (
   trajectory: Point[],
-  tolerance: number
+  tolerance: number,
+  rotationRadius?: number
 ) => CompressedTrajectoryPoint[]
 
 const algorithms: [string, SimplifyFn][] = [
@@ -185,6 +186,64 @@ describe('simplifyTrajectory algorithms', () => {
       it('throws on negative tolerance', () => {
         expect(() => simplify([{ x: 0, y: 0 }], -0.1)).toThrow(
           'tolerance must be >= 0, got -0.1'
+        )
+      })
+    })
+  }
+})
+
+describe('rotation-aware trajectories', () => {
+  // 位置匀速右移 + 自转匀速：位置与角度的插值都精确命中
+  const linearSpin: Point[] = Array.from({ length: 5 }, (_, i) => ({
+    x: i,
+    y: 0,
+    rotation: i * 0.5
+  }))
+
+  for (const [name, simplify] of algorithms) {
+    describe(name, () => {
+      it('collapses uniform spin and drift to endpoints at tolerance 0', () => {
+        expect(simplify(linearSpin, 0, 0.1)).toEqual([
+          { x: 0, y: 0, rotation: 0, span: 0 },
+          { x: 4, y: 0, rotation: 2, span: 4 }
+        ])
+      })
+
+      it('keeps a keyframe where spin jumps far beyond the rotation error', () => {
+        // 位置匀速但自转角在中点大跳变：丢弃中点的任何分段在该处的
+        // 角度插值误差都是跳变幅度本身，远超上限，违反误差上界承诺，
+        // 因此中点必须保留为关键帧——结论只依赖承诺，与算法实现无关
+        const track: Point[] = [
+          { x: 0, y: 0, rotation: 0 },
+          { x: 1, y: 0, rotation: 10 },
+          { x: 2, y: 0, rotation: 0 }
+        ]
+        expect(simplify(track, 0, 0.1)).toEqual([
+          { x: 0, y: 0, rotation: 0, span: 0 },
+          { x: 1, y: 0, rotation: 10, span: 1 },
+          { x: 2, y: 0, rotation: 0, span: 1 }
+        ])
+      })
+
+      it('ignores rotation when maxRotationError is 0', () => {
+        // 上限 0 表示消费端不渲染旋转：只按位置度量，轨迹仍可并段
+        expect(simplify(linearSpin, 0)).toEqual([
+          { x: 0, y: 0, rotation: 0, span: 0 },
+          { x: 4, y: 0, rotation: 2, span: 4 }
+        ])
+      })
+
+      it('bounds spin deviation on an accelerating spin', () => {
+        const track: Point[] = Array.from({ length: 30 }, (_, i) => ({
+          x: 0,
+          y: 0,
+          rotation: 0.1 * i * i
+        }))
+        const maxRotationError = 0.4
+        const result = simplify(track, 0.4, maxRotationError)
+        expect(sumSpans(result)).toBe(track.length - 1)
+        expect(maxSpinDeviation(track, result)).toBeLessThanOrEqual(
+          maxRotationError + 1e-9
         )
       })
     })

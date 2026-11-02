@@ -37,6 +37,30 @@ export function maxLerpDeviation(
   return max
 }
 
+/**
+ * 原始轨迹相对简化结果的最大时刻插值角度误差（弧度），
+ * 与 maxLerpDeviation 同口径，用于校验旋转轨迹压缩的角度误差上界。
+ */
+export function maxSpinDeviation(
+  track: { rotation?: number }[],
+  simplified: CompressedTrajectoryPoint[]
+): number {
+  const indices = restoreIndices(simplified)
+
+  let max = 0
+  // k 定位 i 所属的关键帧段 [indices[k], indices[k + 1]]
+  let k = 0
+  for (let i = 0; i < track.length; i++) {
+    while (k + 2 < indices.length && indices[k + 1] <= i) k++
+    const a = track[indices[k]].rotation ?? 0
+    const b = track[indices[k + 1]].rotation ?? 0
+    const t = (i - indices[k]) / (indices[k + 1] - indices[k])
+    const deviation = Math.abs((track[i].rotation ?? 0) - (a + (b - a) * t))
+    max = Math.max(max, deviation)
+  }
+  return max
+}
+
 /** 时间守恒：span 总和必须等于原始间隔数，播放总时长不变 */
 export function sumSpans(simplified: CompressedTrajectoryPoint[]): number {
   return simplified.reduce((sum, p) => sum + p.span, 0)

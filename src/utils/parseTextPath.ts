@@ -1,7 +1,8 @@
 import earcut from 'earcut'
 import * as opentype from 'opentype.js'
 import { pointsOnPath } from 'points-on-path'
-import { SCALE, TextPathResult } from './utils'
+import { SCALE } from '../const'
+import type { TextPathResult } from './physics'
 
 function svgPathToRapierTrimesh(path: string, scale = 1, tolerance = 1) {
   const subPaths = pointsOnPath(path, tolerance)
@@ -100,13 +101,6 @@ async function resolveFontData(font: FontSource): Promise<ArrayBuffer> {
   return loadFontFromPath(font)
 }
 
-// 先取值再构造 URL，避免打包器把「new URL(字面量, import.meta.url)」识别为资源声明
-// 而重排内置字体的输出位置
-const BUNDLED_FONT_HREF = '../public/LiberationSerif-Bold.ttf'
-
-/** 内置字体：轮廓闭合规整，能稳定三角化 */
-const DEFAULT_FONT = new URL(BUNDLED_FONT_HREF, import.meta.url)
-
 /**
  * 解析文字为可渲染的轮廓路径，同时产出 SVG 用的 pathData 与物理用的三角网格。
  *
@@ -116,7 +110,7 @@ const DEFAULT_FONT = new URL(BUNDLED_FONT_HREF, import.meta.url)
 export async function getTextPaths(
   text: string,
   fontSize: number,
-  font: FontSource = DEFAULT_FONT
+  font: FontSource
 ): Promise<TextPathResult[]> {
   // 加载失败的原样冒泡：loadFontFromPath / loadFontFromUrl 已给出带来源的消息
   const fontData = await resolveFontData(font)

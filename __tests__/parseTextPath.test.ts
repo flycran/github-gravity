@@ -4,11 +4,12 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { DEFAULT_OPTIONS } from '../src/const'
 import {
   getTextPaths,
   loadFontFromPath,
   loadFontFromUrl
-} from '../src/parseTextPath'
+} from '../src/utils/parseTextPath'
 
 const RELATIVE_FONT = 'public/LiberationSerif-Bold.ttf'
 const ABSOLUTE_FONT = resolve(RELATIVE_FONT)
@@ -19,7 +20,7 @@ const BUNDLED_FONT_URL = new URL(
 
 describe('getTextPaths', () => {
   it('uses the bundled font when no source is provided', async () => {
-    const implicit = await getTextPaths('Hi', 40)
+    const implicit = await getTextPaths('Hi', 40, DEFAULT_OPTIONS.font)
     const explicit = await getTextPaths('Hi', 40, ABSOLUTE_FONT)
 
     expect(implicit.length).toBe(2)
@@ -69,7 +70,7 @@ describe('getTextPaths', () => {
   })
 
   it('emits path data, a bounding box and a triangulated mesh per glyph', async () => {
-    const [glyph] = await getTextPaths('H', 40)
+    const [glyph] = await getTextPaths('H', 40, DEFAULT_OPTIONS.font)
 
     expect(glyph.pathData.startsWith('M')).toBe(true)
     expect(glyph.rect.width).toBeGreaterThan(0)
@@ -84,10 +85,10 @@ describe('getTextPaths', () => {
   })
 
   it('returns one entry per glyph and scales with font size', async () => {
-    expect((await getTextPaths('Hi', 40)).length).toBe(2)
+    expect((await getTextPaths('Hi', 40, DEFAULT_OPTIONS.font)).length).toBe(2)
 
-    const [small] = await getTextPaths('H', 20)
-    const [large] = await getTextPaths('H', 40)
+    const [small] = await getTextPaths('H', 20, DEFAULT_OPTIONS.font)
+    const [large] = await getTextPaths('H', 40, DEFAULT_OPTIONS.font)
     expect(large.rect.height / small.rect.height).toBeCloseTo(2, 5)
   })
 
@@ -105,7 +106,7 @@ describe('getTextPaths', () => {
   })
 
   it('tolerates text without glyphs', async () => {
-    expect(await getTextPaths('', 40)).toEqual([])
+    expect(await getTextPaths('', 40, DEFAULT_OPTIONS.font)).toEqual([])
   })
 })
 
