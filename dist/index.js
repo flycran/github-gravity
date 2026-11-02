@@ -46564,9 +46564,7 @@ async function createSimulationWorld(options) {
             flippedVertices[i] = vertices[i];
             flippedVertices[i + 1] = -vertices[i + 1];
         }
-        world.createCollider(wg.trimesh(flippedVertices, indices).setFriction(FRICTION), world.createRigidBody(BI.fixed()
-            .setCcdEnabled(true)
-            .setTranslation(offsetX, centerY)));
+        world.createCollider(wg.trimesh(flippedVertices, indices).setFriction(FRICTION), world.createRigidBody(BI.fixed().setTranslation(offsetX, centerY)));
         for (let i = 0; i < indices.length; i += 3) {
             const i0 = indices[i] * 2, i1 = indices[i + 1] * 2, i2 = indices[i + 2] * 2;
             textTriangles.push([
