@@ -1,0 +1,38 @@
+name: Update Major Tag
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-major-tag
+  cancel-in-progress: false
+
+jobs:
+  update-major-tag:
+    name: Update Major Tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # v3.0.1 -> v3：把大版本 tag 移到本次版本 tag 指向的提交上
+      - name: Update major tag
+        id: update-major-tag
+        run: |
+          MAJOR="v${GITHUB_REF_NAME#v}"
+          MAJOR="${MAJOR%%.*}"
+
+          git tag -f "$MAJOR" "$GITHUB_SHA"
+          git push -f origin "$MAJOR"
+
+          echo "major-tag=$MAJOR" >> "$GITHUB_OUTPUT"
+          echo "Moved $MAJOR to $GITHUB_SHA ($GITHUB_REF_NAME)"
