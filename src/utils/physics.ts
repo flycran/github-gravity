@@ -344,9 +344,7 @@ export async function createSimulationWorld(
     world.createCollider(
       ColliderDesc.trimesh(flippedVertices, indices).setFriction(FRICTION),
       world.createRigidBody(
-        RigidBodyDesc.fixed()
-          .setCcdEnabled(true)
-          .setTranslation(offsetX, centerY)
+        RigidBodyDesc.fixed().setTranslation(offsetX, centerY)
       )
     )
     for (let i = 0; i < indices.length; i += 3) {
