@@ -66,7 +66,7 @@
     "pixi-viewport": "^6.0.3",
     "pixi.js": "^8.22.0",
     "rollup": "^4.57.1",
-    "typescript": "7.0.2"
+    "typescript": "^5.9.3"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "*"
