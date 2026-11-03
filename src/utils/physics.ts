@@ -5,6 +5,7 @@ import {
   RigidBodyDesc,
   World
 } from '@dimforge/rapier2d-compat'
+import type { Polygon } from 'poly-decomp-es'
 import {
   DEFAULT_OPTIONS,
   FRICTION,
@@ -147,8 +148,8 @@ async function createWord(width: number, height: number) {
 
 export interface TextPathResult {
   paths: {
-    vertices: Float32Array
-    indices: Uint32Array
+    /** 字形子轮廓凹分解出的凸多边形集合（字形局部坐标，y 轴向下） */
+    polygons: Polygon[]
   }
   pathData: string
   rect: {
@@ -217,8 +218,6 @@ export interface SimulationResult {
   time: number
   textPaths: Pick<TextPathResult, 'rect' | 'pathData'>[]
   contributions: ContributionJson[]
-  /** 用户名文字碰撞体的三角网格（世界坐标），用于 web 端渲染 */
-  textTriangles: number[][]
   /** 文字在物理世界中的 X 偏移量 */
   offsetX: number
   /** 文字在物理世界中的 Y 偏移量 */
@@ -277,8 +276,8 @@ export interface SimulationOptions {
    * 自定义字体（.ttf/.otf）：本地路径、远程 URL（字符串或 URL 对象），或
    * 已读取好的 Buffer / ArrayBuffer（如 `files[0].arrayBuffer()` 的结果），
    * 默认使用内置的 Liberation Serif Bold。
-   * 谨慎修改：部分字体存在未闭合或自相交的轮廓，操作系统渲染时会自动忽略这些瑕疵，
-   * 但本项目的轮廓三角化算法会直接报错；另有部分字体因 opentype.js 的 GSUB 解析限制无法使用。
+   * 谨慎修改：轮廓不规整（未闭合、自相交等）的字体，分解出的碰撞形状可能不可靠；
+   * 另有部分字体因 opentype.js 的 GSUB 解析限制无法使用。
    * 字体度量差异也可能导致文字位置和碰撞形态需要重新调整
    */
   font?: FontSource
@@ -290,8 +289,6 @@ export interface SimulationWorld {
   /** 贡献方块（含轨迹记录器），每步迭代后调用 update 采集轨迹 */
   contributions: Contribution[]
   textPaths: TextPathResult[]
-  /** 文字碰撞体的三角网格（世界坐标），用于 web 端渲染 */
-  textTriangles: number[][]
   /** 文字在物理世界中的 X 偏移量 */
   offsetX: number
   /** 文字在物理世界中的 Y 偏移量 */
@@ -321,7 +318,7 @@ export async function createSimulationWorld(
   const world = await createWord(width, height)
   const contributions: Contribution[] = []
 
-  // 创建用户名文字静止刚体（居中对齐），同时收集三角网格数据
+  // 创建用户名文字静止碰撞体（居中对齐）
   const textPaths = await getTextPaths(text, fontSize, font)
 
   const { centerY, offsetX } = getTextBoundBox(textPaths, {
@@ -330,35 +327,24 @@ export async function createSimulationWorld(
     textTop
   })
 
-  const textTriangles: number[][] = []
-
   for (const { paths } of textPaths) {
-    const { vertices, indices } = paths
-    if (!vertices.length && !indices.length) continue
-    // 翻转 Y 轴：opentype 字形在基线下方（y 为负），物理世界需要正向
-    const flippedVertices = new Float32Array(vertices.length)
-    for (let i = 0; i < vertices.length; i += 2) {
-      flippedVertices[i] = vertices[i]
-      flippedVertices[i + 1] = -vertices[i + 1]
-    }
-    world.createCollider(
-      ColliderDesc.trimesh(flippedVertices, indices).setFriction(FRICTION),
-      world.createRigidBody(
-        RigidBodyDesc.fixed().setTranslation(offsetX, centerY)
-      )
+    const { polygons } = paths
+    if (!polygons.length) continue
+    // 同一字形的全部凸块挂在共享的静止刚体上，作为 compound collider 参与碰撞
+    const textBody = world.createRigidBody(
+      RigidBodyDesc.fixed().setTranslation(offsetX, centerY)
     )
-    for (let i = 0; i < indices.length; i += 3) {
-      const i0 = indices[i] * 2,
-        i1 = indices[i + 1] * 2,
-        i2 = indices[i + 2] * 2
-      textTriangles.push([
-        offsetX + flippedVertices[i0],
-        centerY + flippedVertices[i0 + 1],
-        offsetX + flippedVertices[i1],
-        centerY + flippedVertices[i1 + 1],
-        offsetX + flippedVertices[i2],
-        centerY + flippedVertices[i2 + 1]
-      ])
+    for (const polygon of polygons) {
+      // 翻转 Y 轴：opentype 字形在基线下方（y 为负），物理世界需要正向
+      const flippedVertices = new Float32Array(polygon.length * 2)
+      for (let i = 0; i < polygon.length; i++) {
+        flippedVertices[i * 2] = polygon[i][0]
+        flippedVertices[i * 2 + 1] = -polygon[i][1]
+      }
+      // 顶点近乎共线的退化凸块求不出凸包，跳过
+      const colliderDesc = ColliderDesc.convexHull(flippedVertices)
+      if (!colliderDesc) continue
+      world.createCollider(colliderDesc.setFriction(FRICTION), textBody)
     }
   }
 
@@ -413,7 +399,6 @@ export async function createSimulationWorld(
     world,
     contributions,
     textPaths,
-    textTriangles,
     offsetX,
     centerY
   }
@@ -430,7 +415,7 @@ export async function startSimulation(
     maxSimulationTime,
     speed
   } = withDefaults(DEFAULT_OPTIONS, options)
-  const { world, contributions, textPaths, textTriangles, offsetX, centerY } =
+  const { world, contributions, textPaths, offsetX, centerY } =
     await createSimulationWorld(options)
 
   // 容差从 SVG 像素换算回物理坐标单位，让压缩函数与渲染缩放解耦；
@@ -504,7 +489,6 @@ export async function startSimulation(
       pathData: pathData,
       rect: rect
     })),
-    textTriangles,
     offsetX,
     centerY
   }

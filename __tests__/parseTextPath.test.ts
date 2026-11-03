@@ -69,19 +69,18 @@ describe('getTextPaths', () => {
     )
   })
 
-  it('emits path data, a bounding box and a triangulated mesh per glyph', async () => {
+  it('emits path data, a bounding box and a convex mesh per glyph', async () => {
     const [glyph] = await getTextPaths('H', 40, DEFAULT_OPTIONS.font)
 
     expect(glyph.pathData.startsWith('M')).toBe(true)
     expect(glyph.rect.width).toBeGreaterThan(0)
     expect(glyph.rect.height).toBeGreaterThan(0)
 
-    // 三角网格与同一份轮廓一一对应：索引按三元组组织，且不越界
-    const vertexCount = glyph.paths.vertices.length / 2
-    const indices = Array.from(glyph.paths.indices)
-    expect(vertexCount).toBeGreaterThan(0)
-    expect(indices.length % 3).toBe(0)
-    expect(Math.max(...indices)).toBeLessThan(vertexCount)
+    // 凸网格与同一份轮廓对应：每个凸块都是至少三个顶点的多边形
+    expect(glyph.paths.polygons.length).toBeGreaterThan(0)
+    for (const polygon of glyph.paths.polygons) {
+      expect(polygon.length).toBeGreaterThanOrEqual(3)
+    }
   })
 
   it('returns one entry per glyph and scales with font size', async () => {

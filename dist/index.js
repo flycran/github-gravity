@@ -28862,563 +28862,6 @@ async function fetchContributions(username, limit) {
     return data;
 }
 
-/**
- * A vertex in a circular doubly linked list representing a polygon ring.
- * `prev`/`next` are always linked (set immediately after {@link createNode}), so they're typed
- * non-null; `prevZ`/`nextZ` are the z-order list links and are null at the ends.
- *
- * @typedef {object} Node
- * @property {number} i vertex index in the coordinates array
- * @property {number} x vertex x coordinate
- * @property {number} y vertex y coordinate
- * @property {Node} prev previous vertex node in the polygon ring
- * @property {Node} next next vertex node in the polygon ring
- * @property {number} z z-order curve value; doubles as the owning block index during eliminateHoles
- * @property {Node | null} prevZ previous node in z-order
- * @property {Node | null} nextZ next node in z-order
- */
-
-// single-vertex holes to preserve through filterPoints (steiner points); kept off the Node
-// shape since they're rare — the empty-set fast path means non-steiner inputs pay nothing
-/** @type {Set<Node>} */
-const steiners = new Set();
-
-// set by filterPoints whenever it removes at least one node; read by earcutLinked's stall
-// handler to decide whether another clip pass is worth attempting before the costlier stages
-let filteredOut = false;
-
-/**
- * Triangulate a polygon given as a flat array of vertex coordinates.
- *
- * @param {ArrayLike<number>} data flat array of vertex coordinates
- * @param {ArrayLike<number> | null} [holeIndices] indices (in vertices, not coordinates) where each hole ring starts
- * @param {number} [dim=2] number of coordinates per vertex in `data`
- * @returns {number[]} triangles as triplets of vertex indices into `data`
- * @example earcut([10,0, 0,50, 60,60, 70,10]); // [1,0,3, 3,2,1]
- */
-function earcut(data, holeIndices, dim = 2) {
-    const outerLen = data.length;
-    if (steiners.size) steiners.clear();
-
-    let outerNode = linkedList(data, 0, outerLen, dim, true);
-    /** @type {number[]} */
-    const triangles = [];
-
-    if (!outerNode || outerNode.next === outerNode.prev) return triangles;
-
-    let minX = 0, minY = 0, invSize = 0;
-
-    // if the shape is not too simple, we'll use z-order curve hash later; calculate polygon bbox
-    if (data.length > 80 * dim) {
-        minX = data[0];
-        minY = data[1];
-        let maxX = minX;
-        let maxY = minY;
-
-        for (let i = dim; i < outerLen; i += dim) {
-            const x = data[i];
-            const y = data[i + 1];
-            if (x < minX) minX = x;
-            if (y < minY) minY = y;
-            if (x > maxX) maxX = x;
-            if (y > maxY) maxY = y;
-        }
-
-        // minX, minY and invSize are later used to transform coords into integers for z-order calculation
-        invSize = Math.max(maxX - minX, maxY - minY);
-        invSize = invSize !== 0 ? 32767 / invSize : 0;
-    }
-
-    earcutLinked(outerNode, triangles, minX, minY, invSize);
-
-    return triangles;
-}
-
-// create a circular doubly linked list from polygon points in the specified winding order
-/** @param {ArrayLike<number>} data @param {number} start @param {number} end @param {number} dim @param {boolean} clockwise @returns {Node | null} */
-function linkedList(data, start, end, dim, clockwise) {
-    /** @type {Node | null} */
-    let last = null;
-
-    if (clockwise === (signedArea(data, start, end, dim) > 0)) {
-        for (let i = start; i < end; i += dim) last = insertNode(i / dim | 0, data[i], data[i + 1], last);
-    } else {
-        for (let i = end - dim; i >= start; i -= dim) last = insertNode(i / dim | 0, data[i], data[i + 1], last);
-    }
-
-    if (last && equals$1(last, last.next)) {
-        removeNode(last);
-        last = last.next;
-    }
-
-    return last;
-}
-
-// Remove collinear or coincident points; removability depends only on a node's immediate
-// neighbors, so we sweep forward and re-check the predecessor after each removal. With no `end`
-// we sweep the whole ring, lapping until nothing is removable (the fixpoint the clipper needs).
-// With an explicit `end` we heal only the dirty window around a bridge/diagonal cut, stopping at
-// `end` rather than lapping — O(window) instead of O(ring).
-/** @param {Node} start @param {Node} [end] @returns {Node} */
-function filterPoints(start, end = start) {
-    const full = end === start;
-
-    let p = start, again;
-    do {
-        again = false;
-        if (p !== p.next && (steiners.size === 0 || !steiners.has(p)) &&
-            (equals$1(p, p.next) || area(p.prev, p, p.next) === 0)) {
-            if (full || p === end) end = p.prev; // pull the stop bound back past the removal
-            filteredOut = true;
-            removeNode(p);
-            p = p.prev;         // re-check the predecessor
-            again = true;
-        } else if (full || p !== end) {
-            p = p.next;
-            again = !full;      // local heal: keep looping until the sweep reaches end
-        }
-    } while (again || p !== end);
-
-    return end;
-}
-
-// main ear slicing loop which triangulates a polygon (given as a linked list)
-/** @param {Node} ear @param {number[]} triangles @param {number} minX @param {number} minY @param {number} invSize */
-function earcutLinked(ear, triangles, minX, minY, invSize) {
-    // interlink polygon nodes in z-order
-    if (invSize) indexCurve(ear, minX, minY, invSize);
-
-    let stop = ear, cured = false;
-
-    // iterate through ears, slicing them one by one
-    while (ear.prev !== ear.next) {
-        const prev = ear.prev;
-        /** @type {Node} */
-        const next = ear.next;
-
-        if (area(prev, ear, next) < 0 && (invSize ? isEarHashed(ear, minX, minY, invSize) : isEar(ear))) {
-            triangles.push(prev.i, ear.i, next.i); // cut off the triangle
-
-            removeNode(ear);
-            ear = next;
-            stop = next;
-            continue;
-        }
-
-        ear = next;
-
-        // if we looped through the whole remaining polygon and can't find any more ears
-        if (ear === stop) {
-            // try filtering collinear/coincident points and slicing again — repeat as long as
-            // filtering actually removes nodes, since each removal can expose new ears
-            filteredOut = false;
-            ear = filterPoints(ear);
-            if (filteredOut) { stop = ear; continue; }
-
-            // filtering is exhausted: cure small local self-intersections once, then retry
-            if (!cured) {
-                ear = cureLocalIntersections(ear, triangles);
-                stop = ear;
-                cured = true;
-                continue;
-            }
-
-            // as a last resort, try splitting the remaining polygon into two
-            splitEarcut(ear, triangles, minX, minY, invSize);
-            break;
-        }
-    }
-}
-
-// check whether a polygon node forms a valid ear with adjacent nodes
-/** @param {Node} ear @returns {boolean} */
-function isEar(ear) {
-    // reflex check (area(a, b, c) >= 0) is hoisted into the earcutLinked caller to avoid non-inlined call here
-    const a = ear.prev, b = ear, c = ear.next,
-        ax = a.x, bx = b.x, cx = c.x, ay = a.y, by = b.y, cy = c.y,
-        x0 = Math.min(ax, bx, cx), // triangle bbox
-        y0 = Math.min(ay, by, cy),
-        x1 = Math.max(ax, bx, cx),
-        y1 = Math.max(ay, by, cy);
-
-    // make sure we don't have other points inside the potential ear
-    let p = c.next;
-    while (p !== a) {
-        if (p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1 && !(ax === p.x && ay === p.y) &&
-            pointInTriangle(ax, ay, bx, by, cx, cy, p.x, p.y) && area(p.prev, p, p.next) >= 0) return false;
-        p = p.next;
-    }
-    return true;
-}
-
-/** @param {Node} ear @param {number} minX @param {number} minY @param {number} invSize @returns {boolean} */
-function isEarHashed(ear, minX, minY, invSize) {
-    // reflex check is hoisted into the earcutLinked caller (see isEar)
-    const a = ear.prev, b = ear, c = ear.next,
-        ax = a.x, bx = b.x, cx = c.x, ay = a.y, by = b.y, cy = c.y,
-        x0 = Math.min(ax, bx, cx), // triangle bbox
-        y0 = Math.min(ay, by, cy),
-        x1 = Math.max(ax, bx, cx),
-        y1 = Math.max(ay, by, cy),
-        minZ = zOrder(x0, y0, minX, minY, invSize), // z-order range for the current triangle bbox;
-        maxZ = zOrder(x1, y1, minX, minY, invSize);
-
-    let p = ear.prevZ;
-    while (p && p.z >= minZ) { // look for points inside the triangle in decreasing z-order
-        if (p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1 && p !== c && !(ax === p.x && ay === p.y) &&
-            pointInTriangle(ax, ay, bx, by, cx, cy, p.x, p.y) && area(p.prev, p, p.next) >= 0) return false;
-        p = p.prevZ;
-    }
-    let n = ear.nextZ;
-    while (n && n.z <= maxZ) { // look for points in increasing z-order
-        if (n.x >= x0 && n.x <= x1 && n.y >= y0 && n.y <= y1 && n !== c && !(ax === n.x && ay === n.y) &&
-            pointInTriangle(ax, ay, bx, by, cx, cy, n.x, n.y) && area(n.prev, n, n.next) >= 0) return false;
-        n = n.nextZ;
-    }
-    return true;
-}
-
-// go through all polygon nodes and cure small local self-intersections
-/** @param {Node} start @param {number[]} triangles @returns {Node} */
-function cureLocalIntersections(start, triangles) {
-    let p = start;
-    let cured = false;
-    do {
-        const a = p.prev,
-            b = p.next.next;
-
-        if (intersects(a, p, p.next, b, false) && locallyInside(a, b) && locallyInside(b, a)) {
-
-            triangles.push(a.i, p.i, b.i);
-
-            // remove two nodes involved
-            removeNode(p);
-            removeNode(p.next);
-
-            p = start = b;
-            cured = true;
-        }
-        p = p.next;
-    } while (p !== start);
-
-    return cured ? filterPoints(p) : p;
-}
-
-// try splitting polygon into two and triangulate them independently
-/** @param {Node} start @param {number[]} triangles @param {number} minX @param {number} minY @param {number} invSize */
-function splitEarcut(start, triangles, minX, minY, invSize) {
-    // look for a valid diagonal that divides the polygon into two
-    let a = start;
-    do {
-        let b = a.next.next;
-        while (b !== a.prev) {
-            if (a.i !== b.i && isValidDiagonal(a, b)) {
-                // split the polygon in two by the diagonal
-                let c = splitPolygon(a, b);
-
-                // filter colinear points around the cuts
-                a = filterPoints(a, a.next);
-                c = filterPoints(c, c.next);
-
-                // run earcut on each half
-                earcutLinked(a, triangles, minX, minY, invSize);
-                earcutLinked(c, triangles, minX, minY, invSize);
-                return;
-            }
-            b = b.next;
-        }
-        a = a.next;
-    } while (a !== start);
-}
-
-// scratch buffers reused across calls and grown on demand: two node-ref arrays that
-// ping-pong during the radix passes, plus parallel z-value arrays so the passes read
-// z from contiguous memory instead of dereferencing each node. 256-entry histogram for
-// 8-bit digits; the small histogram keeps per-call setup cheap (most rings are short)
-/** @type {Node[]} */
-const sortArr = [];
-/** @type {Node[]} */
-let sortBuf = [];
-let zArr = new Uint32Array(0);
-let zBuf = new Uint32Array(0);
-const counts = new Uint32Array(256);
-
-// interlink polygon nodes in z-order: collect into an array, sort by z, relink
-/** @param {Node} start @param {number} minX @param {number} minY @param {number} invSize */
-function indexCurve(start, minX, minY, invSize) {
-    let p = start;
-    let n = 0;
-    do {
-        // always (re)compute: z may still hold a block index left over from eliminateHoles
-        p.z = zOrder(p.x, p.y, minX, minY, invSize);
-        sortArr[n++] = p;
-        p = p.next;
-    } while (p !== start);
-
-    sortNodes(n);
-
-    /** @type {Node | null} */
-    let prev = null;
-    for (let i = 0; i < n; i++) {
-        const node = sortArr[i];
-        node.prevZ = prev;
-        if (prev) prev.nextZ = node;
-        prev = node;
-    }
-    /** @type {Node} */ (prev).nextZ = null;
-
-    // drop the node refs but keep the capacity: setting length to 0 leaves sortBuf unresized
-    // (its growth is gated on zArr), so the radix scatter regrows it out of order every call
-    sortArr.fill(/** @type {Node} */ (/** @type {unknown} */ (null)), 0, n);
-    sortBuf.fill(/** @type {Node} */ (/** @type {unknown} */ (null)), 0, n);
-}
-
-// sort the first n nodes of sortArr by z, in place: insertion sort for small n (cheaper
-// than histogram setup), else LSD radix in four 8-bit passes (covering z's 30 bits)
-/** @param {number} n */
-function sortNodes(n) {
-    if (n <= 32) {
-        for (let i = 1; i < n; i++) {
-            const node = sortArr[i], z = node.z;
-            let j = i - 1;
-            while (j >= 0 && sortArr[j].z > z) { sortArr[j + 1] = sortArr[j]; j--; }
-            sortArr[j + 1] = node;
-        }
-        return;
-    }
-
-    if (zArr.length < n) {
-        zArr = new Uint32Array(n);
-        zBuf = new Uint32Array(n);
-        sortBuf = new Array(n);
-    }
-    for (let i = 0; i < n; i++) zArr[i] = sortArr[i].z;
-
-    // even pass count lands the sorted result back in sortArr
-    radixPass(n, sortArr, zArr, sortBuf, zBuf, 0);
-    radixPass(n, sortBuf, zBuf, sortArr, zArr, 8);
-    radixPass(n, sortArr, zArr, sortBuf, zBuf, 16);
-    radixPass(n, sortBuf, zBuf, sortArr, zArr, 24);
-}
-
-// one LSD radix pass: stably scatter the first n nodes (and their z) from src to dst,
-// bucketed by the 8-bit digit of z at the given bit shift
-/** @param {number} n @param {Node[]} src @param {Uint32Array} srcZ @param {Node[]} dst @param {Uint32Array} dstZ @param {number} shift */
-function radixPass(n, src, srcZ, dst, dstZ, shift) {
-    counts.fill(0);
-    for (let i = 0; i < n; i++) counts[(srcZ[i] >>> shift) & 0xff]++;
-    // turn per-bucket counts into start offsets (prefix sum)
-    let sum = 0;
-    for (let b = 0; b < 256; b++) { const c = counts[b]; counts[b] = sum; sum += c; }
-    for (let i = 0; i < n; i++) {
-        const z = srcZ[i];
-        const pos = counts[(z >>> shift) & 0xff]++;
-        dst[pos] = src[i];
-        dstZ[pos] = z;
-    }
-}
-
-// z-order of a point given coords and inverse of the longer side of data bbox
-/** @param {number} x @param {number} y @param {number} minX @param {number} minY @param {number} invSize @returns {number} */
-function zOrder(x, y, minX, minY, invSize) {
-    // coords are transformed into non-negative 15-bit integer range
-    x = (x - minX) * invSize | 0;
-    y = (y - minY) * invSize | 0;
-
-    x = (x | (x << 8)) & 0x00FF00FF;
-    x = (x | (x << 4)) & 0x0F0F0F0F;
-    x = (x | (x << 2)) & 0x33333333;
-    x = (x | (x << 1)) & 0x55555555;
-
-    y = (y | (y << 8)) & 0x00FF00FF;
-    y = (y | (y << 4)) & 0x0F0F0F0F;
-    y = (y | (y << 2)) & 0x33333333;
-    y = (y | (y << 1)) & 0x55555555;
-
-    return x | (y << 1);
-}
-
-// check if a point lies within a convex triangle
-/** @param {number} ax @param {number} ay @param {number} bx @param {number} by @param {number} cx @param {number} cy @param {number} px @param {number} py @returns {boolean} */
-function pointInTriangle(ax, ay, bx, by, cx, cy, px, py) {
-    return (cx - px) * (ay - py) >= (ax - px) * (cy - py) &&
-           (ax - px) * (by - py) >= (bx - px) * (ay - py) &&
-           (bx - px) * (cy - py) >= (cx - px) * (by - py);
-}
-
-// check if a diagonal between two polygon nodes is valid (lies in polygon interior)
-/** @param {Node} a @param {Node} b @returns {boolean} true when the diagonal is valid */
-function isValidDiagonal(a, b) {
-    const zeroLength = equals$1(a, b) && area(a.prev, a, a.next) > 0 && area(b.prev, b, b.next) > 0; // degenerate case
-    return a.next.i !== b.i && (zeroLength || locallyInside(a, b) && locallyInside(b, a) && // // locally visible
-        (area(a.prev, a, b.prev) !== 0 || area(a, b.prev, b) !== 0)) && // no opposite-facing sectors
-        !intersectsPolygon(a, b) && (zeroLength || middleInside(a, b)); // doesn't intersect other edges, diagonal inside polygon
-}
-
-// signed area of a triangle
-/** @param {Node} p @param {Node} q @param {Node} r @returns {number} */
-function area(p, q, r) {
-    return (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
-}
-
-// check if two points are equal
-/** @param {Node} p1 @param {Node} p2 @returns {boolean} */
-function equals$1(p1, p2) {
-    return p1.x === p2.x && p1.y === p2.y;
-}
-
-// check if two segments intersect; by default includes collinear boundary touches
-/** @param {Node} p1 @param {Node} q1 @param {Node} p2 @param {Node} q2 @param {boolean} [includeBoundary] @returns {boolean} */
-function intersects(p1, q1, p2, q2, includeBoundary = true) {
-    const o1 = area(p1, q1, p2);
-    const o2 = area(p1, q1, q2);
-    const o3 = area(p2, q2, p1);
-    const o4 = area(p2, q2, q1);
-
-    if (((o1 > 0 && o2 < 0) || (o1 < 0 && o2 > 0)) && ((o3 > 0 && o4 < 0) || (o3 < 0 && o4 > 0))) return true;
-
-    if (!includeBoundary) return false;
-
-    if (o1 === 0 && onSegment(p1, p2, q1)) return true; // p1, q1 and p2 are collinear and p2 lies on p1q1
-    if (o2 === 0 && onSegment(p1, q2, q1)) return true; // p1, q1 and q2 are collinear and q2 lies on p1q1
-    if (o3 === 0 && onSegment(p2, p1, q2)) return true; // p2, q2 and p1 are collinear and p1 lies on p2q2
-    if (o4 === 0 && onSegment(p2, q1, q2)) return true; // p2, q2 and q1 are collinear and q1 lies on p2q2
-
-    return false;
-}
-
-// for collinear points p, q, r, check if point q lies on segment pr
-/** @param {Node} p @param {Node} q @param {Node} r @returns {boolean} */
-function onSegment(p, q, r) {
-    return q.x <= Math.max(p.x, r.x) && q.x >= Math.min(p.x, r.x) && q.y <= Math.max(p.y, r.y) && q.y >= Math.min(p.y, r.y);
-}
-
-// check if a polygon diagonal intersects any polygon segments
-/** @param {Node} a @param {Node} b @returns {boolean} */
-function intersectsPolygon(a, b) {
-    // diagonal bbox; an edge whose bbox can't overlap it can't intersect it, so
-    // skip the orientation test for those (the common case — the diagonal is short)
-    const minX = Math.min(a.x, b.x);
-    const maxX = Math.max(a.x, b.x);
-    const minY = Math.min(a.y, b.y);
-    const maxY = Math.max(a.y, b.y);
-
-    let p = a;
-    do {
-        const n = p.next;
-        if ((p.x > maxX && n.x > maxX) || (p.x < minX && n.x < minX) ||
-            (p.y > maxY && n.y > maxY) || (p.y < minY && n.y < minY)) {
-            p = n;
-            continue;
-        }
-        if (p.i !== a.i && n.i !== a.i && p.i !== b.i && n.i !== b.i &&
-                intersects(p, n, a, b)) return true;
-        p = n;
-    } while (p !== a);
-
-    return false;
-}
-
-// check if a polygon diagonal is locally inside the polygon
-/** @param {Node} a @param {Node} b @returns {boolean} */
-function locallyInside(a, b) {
-    return area(a.prev, a, a.next) < 0 ?
-        area(a, b, a.next) >= 0 && area(a, a.prev, b) >= 0 :
-        area(a, b, a.prev) < 0 || area(a, a.next, b) < 0;
-}
-
-// check if the middle point of a polygon diagonal is inside the polygon
-/** @param {Node} a @param {Node} b @returns {boolean} */
-function middleInside(a, b) {
-    let p = a;
-    let inside = false;
-    const px = (a.x + b.x) / 2;
-    const py = (a.y + b.y) / 2;
-    do {
-        const n = p.next;
-        if (((p.y > py) !== (n.y > py)) && (px < (n.x - p.x) * (py - p.y) / (n.y - p.y) + p.x))
-            inside = !inside;
-        p = n;
-    } while (p !== a);
-
-    return inside;
-}
-
-// link two polygon vertices with a bridge; if the vertices belong to the same ring, it splits polygon into two;
-// if one belongs to the outer ring and another to a hole, it merges it into a single ring
-/** @param {Node} a @param {Node} b @returns {Node} */
-function splitPolygon(a, b) {
-    const a2 = createNode(a.i, a.x, a.y),
-        b2 = createNode(b.i, b.x, b.y),
-        an = a.next,
-        bp = b.prev;
-
-    a.next = b;
-    b.prev = a;
-
-    a2.next = an;
-    an.prev = a2;
-
-    b2.next = a2;
-    a2.prev = b2;
-
-    bp.next = b2;
-    b2.prev = bp;
-
-    return b2;
-}
-
-// create a node and optionally link it with previous one (in a circular doubly linked list)
-/** @param {number} i @param {number} x @param {number} y @param {Node | null} last @returns {Node} */
-function insertNode(i, x, y, last) {
-    const p = createNode(i, x, y);
-
-    if (!last) {
-        p.prev = p;
-        p.next = p;
-
-    } else {
-        p.next = last.next;
-        p.prev = last;
-        last.next.prev = p;
-        last.next = p;
-    }
-    return p;
-}
-
-/** @param {Node} p */
-function removeNode(p) {
-    p.next.prev = p.prev;
-    p.prev.next = p.next;
-
-    if (p.prevZ) p.prevZ.nextZ = p.nextZ;
-    if (p.nextZ) p.nextZ.prevZ = p.prevZ;
-}
-
-/** @param {number} i @param {number} x @param {number} y @returns {Node} */
-function createNode(i, x, y) {
-    // prev/next are assigned by the caller before any read, so the null init is cast away here
-    return /** @type {Node} */ (/** @type {unknown} */ ({
-        i, // vertex index in coordinates array
-        x, y, // vertex coordinates
-        prev: null, // previous and next vertex nodes in a polygon ring
-        next: null,
-        z: 0, // z-order curve value; doubles as owning block in the hole-bridge index during eliminateHoles
-        prevZ: null, // previous and next nodes in z-order
-        nextZ: null
-    }));
-}
-
-/** @param {ArrayLike<number>} data @param {number} start @param {number} end @param {number} dim @returns {number} */
-function signedArea(data, start, end, dim) {
-    let sum = 0;
-    for (let i = start, j = end - dim; i < end; i += dim) {
-        sum += (data[j] - data[i]) * (data[i + 1] + data[j + 1]);
-        j = i;
-    }
-    return sum;
-}
-
 // src/tiny-inflate@1.0.3.esm.mjs
 var TINF_OK = 0;
 var TINF_DATA_ERROR = -3;
@@ -46061,16 +45504,429 @@ function pointsOnPath(path, tolerance, distance) {
     }
 }
 
-function svgPathToRapierTrimesh(path, scale = 1, tolerance = 1) {
+const tmpPoint1 = [0, 0];
+const tmpPoint2 = [0, 0];
+
+/**
+ * Checks if two line segments intersects.
+ * @param p1 The start vertex of the first line segment.
+ * @param p2 The end vertex of the first line segment.
+ * @param q1 The start vertex of the second line segment.
+ * @param q2 The end vertex of the second line segment.
+ * @return True if the two line segments intersect
+ */
+function lineSegmentsIntersect(p1, p2, q1, q2) {
+  const dx = p2[0] - p1[0];
+  const dy = p2[1] - p1[1];
+  const da = q2[0] - q1[0];
+  const db = q2[1] - q1[1];
+
+  // segments are parallel
+  if (da * dy - db * dx === 0) {
+    return false;
+  }
+  const s = (dx * (q1[1] - p1[1]) + dy * (p1[0] - q1[0])) / (da * dy - db * dx);
+  const t = (da * (p1[1] - q1[1]) + db * (q1[0] - p1[0])) / (db * dx - da * dy);
+  return s >= 0 && s <= 1 && t >= 0 && t <= 1;
+}
+
+/**
+ * Get the area of a triangle spanned by the three given points. Note that the area will be negative if the points are not given in counter-clockwise order.
+ * @param a point 1
+ * @param b point 2
+ * @param c point 3
+ * @return the area of a triangle spanned by the three given points
+ */
+function triangleArea(a, b, c) {
+  return (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+}
+function isLeft(a, b, c) {
+  return triangleArea(a, b, c) > 0;
+}
+function isLeftOn(a, b, c) {
+  return triangleArea(a, b, c) >= 0;
+}
+function isRight(a, b, c) {
+  return triangleArea(a, b, c) < 0;
+}
+function isRightOn(a, b, c) {
+  return triangleArea(a, b, c) <= 0;
+}
+
+/**
+ * Check if three points are collinear
+ * @param a point 1
+ * @param b point 2
+ * @param c point 3
+ * @param thresholdAngle angle to use when comparing the vectors. The function will return true if the angle between the resulting vectors is less than this value. Use zero for max precision.
+ * @return whether the points are collinear
+ */
+function collinear(a, b, c, thresholdAngle) {
+  {
+    const ab = tmpPoint1;
+    const bc = tmpPoint2;
+    ab[0] = b[0] - a[0];
+    ab[1] = b[1] - a[1];
+    bc[0] = c[0] - b[0];
+    bc[1] = c[1] - b[1];
+    const dot = ab[0] * bc[0] + ab[1] * bc[1];
+    const magA = Math.sqrt(ab[0] * ab[0] + ab[1] * ab[1]);
+    const magB = Math.sqrt(bc[0] * bc[0] + bc[1] * bc[1]);
+    const angle = Math.acos(dot / (magA * magB));
+    return angle < thresholdAngle;
+  }
+}
+function sqdist(a, b) {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  return dx * dx + dy * dy;
+}
+
+/**
+ * Get a vertex at position i. It does not matter if i is out of bounds, this function will just cycle.
+ * @param i vertex position
+ * @return vertex at position i
+ */
+function polygonAt(polygon, i) {
+  const s = polygon.length;
+  return polygon[i < 0 ? i % s + s : i % s];
+}
+
+/**
+ * Append points "from" to "to" -1 from an other polygon "poly" onto this one.
+ * @param polygon the polygon to append to
+ * @param poly The polygon to get points from.
+ * @param from The vertex index in "poly".
+ * @param to The end vertex index in "poly". Note that this vertex is NOT included when appending.
+ */
+function polygonAppend(polygon, poly, from, to) {
+  for (let i = from; i < to; i++) {
+    polygon.push(poly[i]);
+  }
+}
+
+/**
+ * Make sure that the polygon vertices are ordered counter-clockwise.
+ */
+function makeCCW(polygon) {
+  let br = 0;
+  const v = polygon;
+
+  // find bottom right point
+  for (let i = 1; i < polygon.length; ++i) {
+    if (v[i][1] < v[br][1] || v[i][1] === v[br][1] && v[i][0] > v[br][0]) {
+      br = i;
+    }
+  }
+
+  // reverse poly if clockwise
+  if (!isLeft(polygonAt(polygon, br - 1), polygonAt(polygon, br), polygonAt(polygon, br + 1))) {
+    polygonReverse(polygon);
+    return true;
+  } else {
+    return false;
+  }
+}
+
+/**
+ * Reverse the vertices in the polygon
+ */
+function polygonReverse(polygon) {
+  const tmp = [];
+  const N = polygon.length;
+  for (let i = 0; i !== N; i++) {
+    tmp.push(polygon.pop());
+  }
+  for (let i = 0; i !== N; i++) {
+    polygon[i] = tmp[i];
+  }
+}
+
+/**
+ * Check if a point in the polygon is a reflex point
+ * @param i the point in the polygon to check
+ * @return whether the given point in the polygon is a reflex point
+ */
+function polygonIsReflex(polygon, i) {
+  return isRight(polygonAt(polygon, i - 1), polygonAt(polygon, i), polygonAt(polygon, i + 1));
+}
+
+/**
+ * Check if two vertices in the polygon can see each other
+ * @param a vertex index 1
+ * @param b vertex index 2
+ * @return if two vertices in the polygon can see each other
+ */
+function polygonCanSee2(polygon, a, b) {
+  // for each edge
+  for (let i = 0; i !== polygon.length; ++i) {
+    // ignore incident edges
+    if (i === a || i === b || (i + 1) % polygon.length === a || (i + 1) % polygon.length === b) {
+      continue;
+    }
+    if (lineSegmentsIntersect(polygonAt(polygon, a), polygonAt(polygon, b), polygonAt(polygon, i), polygonAt(polygon, i + 1))) {
+      return false;
+    }
+  }
+  return true;
+}
+function getIntersectionPoint(p1, p2, q1, q2, delta) {
+  if (delta === void 0) {
+    delta = 0;
+  }
+  const a1 = p2[1] - p1[1];
+  const b1 = p1[0] - p2[0];
+  const c1 = a1 * p1[0] + b1 * p1[1];
+  const a2 = q2[1] - q1[1];
+  const b2 = q1[0] - q2[0];
+  const c2 = a2 * q1[0] + b2 * q1[1];
+  const det = a1 * b2 - a2 * b1;
+  if (!scalarsEqual(det, 0, delta)) {
+    return [(b2 * c1 - b1 * c2) / det, (a1 * c2 - a2 * c1) / det];
+  } else {
+    return [0, 0];
+  }
+}
+
+/**
+ * Quickly decompose the Polygon into convex sub-polygons.
+ * @param polygon the polygon to decompose
+ * @param result
+ * @param reflexVertices
+ * @param steinerPoints
+ * @param delta
+ * @param maxlevel
+ * @param level
+ * @return the decomposed sub-polygons
+ */
+function quickDecomp(polygon, result, reflexVertices, steinerPoints, delta, maxlevel, level) {
+  if (result === void 0) {
+    result = [];
+  }
+  if (reflexVertices === void 0) {
+    reflexVertices = [];
+  }
+  if (steinerPoints === void 0) {
+    steinerPoints = [];
+  }
+  if (delta === void 0) {
+    delta = 25;
+  }
+  if (maxlevel === void 0) {
+    maxlevel = 100;
+  }
+  if (level === void 0) {
+    level = 0;
+  }
+  // Points
+  let upperInt = [0, 0];
+  let lowerInt = [0, 0];
+  let p = [0, 0];
+
+  // scalars
+  let upperDist = 0;
+  let lowerDist = 0;
+  let d = 0;
+  let closestDist = 0;
+
+  // Integers
+  let upperIndex = 0;
+  let lowerIndex = 0;
+  let closestIndex = 0;
+
+  // polygons
+  const lowerPoly = [];
+  const upperPoly = [];
+  const poly = polygon;
+  const v = polygon;
+  if (v.length < 3) {
+    return result;
+  }
+  level++;
+  if (level > maxlevel) {
+    console.warn('quickDecomp: max level (' + maxlevel + ') reached.');
+    return result;
+  }
+  for (let i = 0; i < polygon.length; ++i) {
+    if (polygonIsReflex(poly, i)) {
+      reflexVertices.push(poly[i]);
+      upperDist = lowerDist = Number.MAX_VALUE;
+      for (let j = 0; j < polygon.length; ++j) {
+        if (isLeft(polygonAt(poly, i - 1), polygonAt(poly, i), polygonAt(poly, j)) && isRightOn(polygonAt(poly, i - 1), polygonAt(poly, i), polygonAt(poly, j - 1))) {
+          // if line intersects with an edge
+          p = getIntersectionPoint(polygonAt(poly, i - 1), polygonAt(poly, i), polygonAt(poly, j), polygonAt(poly, j - 1)); // find the point of intersection
+          if (isRight(polygonAt(poly, i + 1), polygonAt(poly, i), p)) {
+            // make sure it's inside the poly
+            d = sqdist(poly[i], p);
+            if (d < lowerDist) {
+              // keep only the closest intersection
+              lowerDist = d;
+              lowerInt = p;
+              lowerIndex = j;
+            }
+          }
+        }
+        if (isLeft(polygonAt(poly, i + 1), polygonAt(poly, i), polygonAt(poly, j + 1)) && isRightOn(polygonAt(poly, i + 1), polygonAt(poly, i), polygonAt(poly, j))) {
+          p = getIntersectionPoint(polygonAt(poly, i + 1), polygonAt(poly, i), polygonAt(poly, j), polygonAt(poly, j + 1));
+          if (isLeft(polygonAt(poly, i - 1), polygonAt(poly, i), p)) {
+            d = sqdist(poly[i], p);
+            if (d < upperDist) {
+              upperDist = d;
+              upperInt = p;
+              upperIndex = j;
+            }
+          }
+        }
+      }
+
+      // if there are no vertices to connect to, choose a point in the middle
+      if (lowerIndex === (upperIndex + 1) % polygon.length) {
+        p[0] = (lowerInt[0] + upperInt[0]) / 2;
+        p[1] = (lowerInt[1] + upperInt[1]) / 2;
+        steinerPoints.push(p);
+        if (i < upperIndex) {
+          polygonAppend(lowerPoly, poly, i, upperIndex + 1);
+          lowerPoly.push(p);
+          upperPoly.push(p);
+          if (lowerIndex !== 0) {
+            polygonAppend(upperPoly, poly, lowerIndex, poly.length);
+          }
+          polygonAppend(upperPoly, poly, 0, i + 1);
+        } else {
+          if (i !== 0) {
+            polygonAppend(lowerPoly, poly, i, poly.length);
+          }
+          polygonAppend(lowerPoly, poly, 0, upperIndex + 1);
+          lowerPoly.push(p);
+          upperPoly.push(p);
+          polygonAppend(upperPoly, poly, lowerIndex, i + 1);
+        }
+      } else {
+        // connect to the closest point within the triangle
+        if (lowerIndex > upperIndex) {
+          upperIndex += polygon.length;
+        }
+        closestDist = Number.MAX_VALUE;
+        if (upperIndex < lowerIndex) {
+          return result;
+        }
+        for (let j = lowerIndex; j <= upperIndex; ++j) {
+          if (isLeftOn(polygonAt(poly, i - 1), polygonAt(poly, i), polygonAt(poly, j)) && isRightOn(polygonAt(poly, i + 1), polygonAt(poly, i), polygonAt(poly, j))) {
+            d = sqdist(polygonAt(poly, i), polygonAt(poly, j));
+            if (d < closestDist && polygonCanSee2(poly, i, j)) {
+              closestDist = d;
+              closestIndex = j % polygon.length;
+            }
+          }
+        }
+        if (i < closestIndex) {
+          polygonAppend(lowerPoly, poly, i, closestIndex + 1);
+          if (closestIndex !== 0) {
+            polygonAppend(upperPoly, poly, closestIndex, v.length);
+          }
+          polygonAppend(upperPoly, poly, 0, i + 1);
+        } else {
+          if (i !== 0) {
+            polygonAppend(lowerPoly, poly, i, v.length);
+          }
+          polygonAppend(lowerPoly, poly, 0, closestIndex + 1);
+          polygonAppend(upperPoly, poly, closestIndex, i + 1);
+        }
+      }
+
+      // solve smallest poly first
+      if (lowerPoly.length < upperPoly.length) {
+        quickDecomp(lowerPoly, result, reflexVertices, steinerPoints, delta, maxlevel, level);
+        quickDecomp(upperPoly, result, reflexVertices, steinerPoints, delta, maxlevel, level);
+      } else {
+        quickDecomp(upperPoly, result, reflexVertices, steinerPoints, delta, maxlevel, level);
+        quickDecomp(lowerPoly, result, reflexVertices, steinerPoints, delta, maxlevel, level);
+      }
+      return result;
+    }
+  }
+  result.push(polygon);
+  return result;
+}
+
+/**
+ * Remove collinear points in the polygon.
+ * @param thresholdAngle The threshold angle to use when determining whether two edges are collinear. Use zero for finest precision.
+ * @return The number of points removed
+ */
+function removeCollinearPoints(polygon, thresholdAngle) {
+  let num = 0;
+  for (let i = polygon.length - 1; polygon.length > 3 && i >= 0; --i) {
+    if (collinear(polygonAt(polygon, i - 1), polygonAt(polygon, i), polygonAt(polygon, i + 1), thresholdAngle)) {
+      // Remove the middle point
+      polygon.splice(i % polygon.length, 1);
+      num++;
+    }
+  }
+  return num;
+}
+
+/**
+ * Check if two scalars are equal
+ * @param a scalar a
+ * @param b scalar b
+ * @param precision the precision for the equality check
+ * @return whether the two scalars are equal with the given precision
+ */
+function scalarsEqual(a, b, precision) {
+  if (precision === void 0) {
+    precision = 0;
+  }
+  precision = precision || 0;
+  return Math.abs(a - b) <= precision;
+}
+
+/**
+ * Check if two points are equal
+ * @param a point a
+ * @param b point b
+ * @param precision the precision for the equality check
+ * @return if the two points are equal
+ */
+function pointsEqual(a, b, precision) {
+  return scalarsEqual(a[0], b[0], precision) && scalarsEqual(a[1], b[1], precision);
+}
+
+/**
+ * Remove duplicate points in the polygon.
+ * @param precision The threshold to use when determining whether two points are the same. Use zero for best precision.
+ */
+function removeDuplicatePoints(polygon, precision) {
+  for (let i = polygon.length - 1; i >= 1; --i) {
+    const pi = polygon[i];
+    for (let j = i - 1; j >= 0; --j) {
+      if (pointsEqual(pi, polygon[j], precision)) {
+        polygon.splice(i, 1);
+        continue;
+      }
+    }
+  }
+}
+
+/**
+ * 把 SVG path 的每个子轮廓独立凹分解为凸多边形集合（顶点已按 scale 缩放）。
+ * 子轮廓之间互相独立处理：孔洞轮廓同样参与分解，即孔洞区域被视为实心
+ */
+function svgPathToConvexPolygons(path, scale = 1, tolerance = 1) {
     const subPaths = pointsOnPath(path, tolerance);
-    const points = subPaths.flat();
-    const vertices = points.map(([x, y]) => [x * scale, y * scale]);
-    const flatVertices = vertices.flat();
-    const indices = earcut(flatVertices);
-    return {
-        vertices: new Float32Array(flatVertices),
-        indices: new Uint32Array(indices)
-    };
+    const polygons = [];
+    for (const subPath of subPaths) {
+        // 采样点可能含重复点与共线点，会让分解产生退化凸块，先清理
+        const polygon = subPath.map(([x, y]) => [x * scale, y * scale]);
+        removeDuplicatePoints(polygon, 0.01);
+        removeCollinearPoints(polygon, 0.01);
+        // 清理后不足 3 点的轮廓构不成多边形
+        if (polygon.length < 3)
+            continue;
+        makeCCW(polygon);
+        polygons.push(...quickDecomp(polygon));
+    }
+    return polygons;
 }
 /** Buffer / Uint8Array 可能是共享 ArrayBuffer 的一段视图，必须按实际偏移截取副本 */
 function viewToArrayBuffer(view) {
@@ -46137,7 +45993,7 @@ async function resolveFontData(font) {
     return loadFontFromPath(font);
 }
 /**
- * 解析文字为可渲染的轮廓路径，同时产出 SVG 用的 pathData 与物理用的三角网格。
+ * 解析文字为可渲染的轮廓路径，同时产出 SVG 用的 pathData 与物理用的凸多边形网格。
  *
  * @param font 字体来源（.ttf/.otf）：本地路径、URL、URL 字符串，或
  * Buffer / ArrayBuffer（如 `files[0].arrayBuffer()` 的结果）；省略时用内置字体
@@ -46166,17 +46022,16 @@ async function getTextPaths(text, fontSize, font) {
     return paths.map((path) => {
         const bbox = path.getBoundingBox();
         const pathData = path.toPathData(2);
-        let triangulated;
+        let decomposed;
         try {
-            triangulated = svgPathToRapierTrimesh(pathData);
+            decomposed = svgPathToConvexPolygons(pathData);
         }
         catch (error) {
-            throw new Error(`Failed to triangulate a glyph from font "${describeFont(font)}". ` +
-                'Some fonts contain open or self-intersecting contours that the ' +
-                'triangulation algorithm cannot handle.', { cause: error });
+            // 防御性包装：上游分解几乎不抛错，抛出时也带上字体来源便于定位
+            throw new Error(`Failed to decompose a glyph from font "${describeFont(font)}"`, { cause: error });
         }
         return {
-            paths: triangulated,
+            paths: { polygons: decomposed },
             pathData: pathData,
             rect: {
                 x: bbox.x1,
@@ -46552,35 +46407,31 @@ async function createSimulationWorld(options) {
     const { username, text = username, textTop, shape, font, size, interval, fontSize, width, height } = withDefaults(DEFAULT_OPTIONS, options);
     const world = await createWord(width, height);
     const contributions = [];
-    // 创建用户名文字静止刚体（居中对齐），同时收集三角网格数据
+    // 创建用户名文字静止碰撞体（居中对齐）
     const textPaths = await getTextPaths(text, fontSize, font);
     const { centerY, offsetX } = getTextBoundBox(textPaths, {
         width,
         height,
         textTop
     });
-    const textTriangles = [];
     for (const { paths } of textPaths) {
-        const { vertices, indices } = paths;
-        if (!vertices.length && !indices.length)
+        const { polygons } = paths;
+        if (!polygons.length)
             continue;
-        // 翻转 Y 轴：opentype 字形在基线下方（y 为负），物理世界需要正向
-        const flippedVertices = new Float32Array(vertices.length);
-        for (let i = 0; i < vertices.length; i += 2) {
-            flippedVertices[i] = vertices[i];
-            flippedVertices[i + 1] = -vertices[i + 1];
-        }
-        world.createCollider(wg.trimesh(flippedVertices, indices).setFriction(FRICTION), world.createRigidBody(BI.fixed().setTranslation(offsetX, centerY)));
-        for (let i = 0; i < indices.length; i += 3) {
-            const i0 = indices[i] * 2, i1 = indices[i + 1] * 2, i2 = indices[i + 2] * 2;
-            textTriangles.push([
-                offsetX + flippedVertices[i0],
-                centerY + flippedVertices[i0 + 1],
-                offsetX + flippedVertices[i1],
-                centerY + flippedVertices[i1 + 1],
-                offsetX + flippedVertices[i2],
-                centerY + flippedVertices[i2 + 1]
-            ]);
+        // 同一字形的全部凸块挂在共享的静止刚体上，作为 compound collider 参与碰撞
+        const textBody = world.createRigidBody(BI.fixed().setTranslation(offsetX, centerY));
+        for (const polygon of polygons) {
+            // 翻转 Y 轴：opentype 字形在基线下方（y 为负），物理世界需要正向
+            const flippedVertices = new Float32Array(polygon.length * 2);
+            for (let i = 0; i < polygon.length; i++) {
+                flippedVertices[i * 2] = polygon[i][0];
+                flippedVertices[i * 2 + 1] = -polygon[i][1];
+            }
+            // 顶点近乎共线的退化凸块求不出凸包，跳过
+            const colliderDesc = wg.convexHull(flippedVertices);
+            if (!colliderDesc)
+                continue;
+            world.createCollider(colliderDesc.setFriction(FRICTION), textBody);
         }
     }
     const githubContributions = await fetchContributions(username);
@@ -46618,14 +46469,13 @@ async function createSimulationWorld(options) {
         world,
         contributions,
         textPaths,
-        textTriangles,
         offsetX,
         centerY
     };
 }
 async function startSimulation(options) {
     const { shape, compressionAlgorithm, compressionTolerance, disableCompression, maxSimulationTime, speed } = withDefaults(DEFAULT_OPTIONS, options);
-    const { world, contributions, textPaths, textTriangles, offsetX, centerY } = await createSimulationWorld(options);
+    const { world, contributions, textPaths, offsetX, centerY } = await createSimulationWorld(options);
     // 容差从 SVG 像素换算回物理坐标单位，让压缩函数与渲染缩放解耦；
     // 显式禁用压缩时保留原始轨迹，消费端回退到 SMIL 默认均分时间
     const tolerance = compressionTolerance / SCALE;
@@ -46682,7 +46532,6 @@ async function startSimulation(options) {
             pathData: pathData,
             rect: rect
         })),
-        textTriangles,
         offsetX,
         centerY
     };
