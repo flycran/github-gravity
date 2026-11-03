@@ -11,6 +11,7 @@ import {
   GRAVITY,
   MAX_STEPS,
   SCALE,
+  SETTLE_CONFIRM_FRAMES,
   TIMESTEP,
   VELOCITY_THRESHOLD
 } from '../const'
@@ -108,6 +109,11 @@ export class Contribution implements ContributionJson {
 
   getTrajectory() {
     return this.trajectory
+  }
+
+  /** 移除轨迹末尾 count 个点（至少保留首点） */
+  truncateTail(count: number) {
+    this.trajectory.length = Math.max(1, this.trajectory.length - count)
   }
 
   toJSON(): ContributionJson {
@@ -447,7 +453,7 @@ export async function startSimulation(
   // 显式禁用压缩时保留原始轨迹，消费端回退到 SMIL 默认均分时间
   const tolerance = compressionTolerance / SCALE
 
-  /** 判断所有 collider 的刚体是否都已静止（线速度与角速度均低于阈值） */
+  /** 判断所有贡献块的刚体是否都已静止（线速度与角速度均低于阈值） */
   function areAllCollidersSleeping(): boolean {
     for (const contribution of contributions) {
       const body = contribution.collider.parent()
@@ -467,6 +473,8 @@ export async function startSimulation(
   }
 
   let stepCount = 0
+  /** 连续静止帧计数，任何一帧仍有物体在运动即清零 */
+  let stillFrames = 0
   const startTime = Date.now()
   while (true) {
     world.step()
@@ -478,7 +486,17 @@ export async function startSimulation(
 
     pruneFallenBlocks(world, contributions, size)
 
-    if (stepCount > 2 && areAllCollidersSleeping()) break
+    // 连续多帧静止才判定完成：弹跳顶点的瞬时零速凑不满确认帧数，不会误停
+    stillFrames = areAllCollidersSleeping() ? stillFrames + 1 : 0
+    if (stillFrames >= SETTLE_CONFIRM_FRAMES) {
+      // 确认静止多记录了 SETTLE_CONFIRM_FRAMES 帧，其间所有物体均已不再移动，
+      // 各轨迹同步截掉这些帧保持长度一致，总时长相应缩短到实际静止时刻
+      stepCount -= SETTLE_CONFIRM_FRAMES
+      for (const contribution of contributions) {
+        contribution.truncateTail(SETTLE_CONFIRM_FRAMES)
+      }
+      break
+    }
     // 最大模拟时间以播放时长计：模拟时长达到它乘以倍速即停止，返回已模拟出的轨迹
     if (
       maxSimulationTime !== undefined &&

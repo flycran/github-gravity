@@ -11,6 +11,9 @@ export const GRAVITY = 1.5
 /** 速度小于此阈值视为静止 */
 export const VELOCITY_THRESHOLD = 0.1
 
+/** 连续静止帧数达到该值才判定全部静止（约 0.5 秒）；确认期记录的帧在返回前截掉 */
+export const SETTLE_CONFIRM_FRAMES = 15
+
 /** 未设置最大模拟时间时的模拟步数上限，超出视为无法收敛，直接抛错终止模拟 */
 export const MAX_STEPS = 9000
 
