@@ -119,10 +119,10 @@ that point.
 
 `font-path` swaps the collision font. It accepts a local `.ttf`/`.otf` path or an `http(s)` URL.
 The bundled Liberation Serif Bold is used by default because its contours are clean and
-reliably triangulated. Custom fonts are risky:
+decompose stably. Custom fonts are not guaranteed to work:
 
-- Contours that are not closed or that self-intersect are silently tolerated by most
-  renderers, but the triangulation used for the physics collider rejects them.
+- Fonts with irregular contours (open or self-intersecting) may decompose into unreliable
+  collision shapes.
 - Some fonts cannot be parsed by opentype.js at all (common ones such as DejaVu fail on their
   GSUB tables).
 - Different font metrics usually require re-tuning `font-size` and `text-top`.

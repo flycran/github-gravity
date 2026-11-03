@@ -1,25 +1,40 @@
-import earcut from 'earcut'
 import * as opentype from 'opentype.js'
 import { pointsOnPath } from 'points-on-path'
+import type { Point, Polygon } from 'poly-decomp-es'
+import {
+  makeCCW,
+  quickDecomp,
+  removeCollinearPoints,
+  removeDuplicatePoints
+} from 'poly-decomp-es'
 import { SCALE } from '../const'
 import type { TextPathResult } from './physics'
 
-function svgPathToRapierTrimesh(path: string, scale = 1, tolerance = 1) {
+/**
+ * 把 SVG path 的每个子轮廓独立凹分解为凸多边形集合（顶点已按 scale 缩放）。
+ * 子轮廓之间互相独立处理：孔洞轮廓同样参与分解，即孔洞区域被视为实心
+ */
+function svgPathToConvexPolygons(
+  path: string,
+  scale = 1,
+  tolerance = 1
+): Polygon[] {
   const subPaths = pointsOnPath(path, tolerance)
-  const points = subPaths.flat()
 
-  const vertices = points.map(
-    ([x, y]) => [x * scale, y * scale] as [number, number]
-  )
-
-  const flatVertices = vertices.flat()
-
-  const indices = earcut(flatVertices)
-
-  return {
-    vertices: new Float32Array(flatVertices),
-    indices: new Uint32Array(indices)
+  const polygons: Polygon[] = []
+  for (const subPath of subPaths) {
+    // 采样点可能含重复点与共线点，会让分解产生退化凸块，先清理
+    const polygon: Point[] = subPath.map(
+      ([x, y]) => [x * scale, y * scale] as Point
+    )
+    removeDuplicatePoints(polygon, 0.01)
+    removeCollinearPoints(polygon, 0.01)
+    // 清理后不足 3 点的轮廓构不成多边形
+    if (polygon.length < 3) continue
+    makeCCW(polygon)
+    polygons.push(...quickDecomp(polygon))
   }
+  return polygons
 }
 
 /** 字体数据来源：本地路径、远程 URL（字符串或 URL 对象），或已读取好的字体数据 */
@@ -102,7 +117,7 @@ async function resolveFontData(font: FontSource): Promise<ArrayBuffer> {
 }
 
 /**
- * 解析文字为可渲染的轮廓路径，同时产出 SVG 用的 pathData 与物理用的三角网格。
+ * 解析文字为可渲染的轮廓路径，同时产出 SVG 用的 pathData 与物理用的凸多边形网格。
  *
  * @param font 字体来源（.ttf/.otf）：本地路径、URL、URL 字符串，或
  * Buffer / ArrayBuffer（如 `files[0].arrayBuffer()` 的结果）；省略时用内置字体
@@ -143,20 +158,19 @@ export async function getTextPaths(
     const bbox = path.getBoundingBox()
     const pathData = path.toPathData(2)
 
-    let triangulated: ReturnType<typeof svgPathToRapierTrimesh>
+    let decomposed: Polygon[]
     try {
-      triangulated = svgPathToRapierTrimesh(pathData)
+      decomposed = svgPathToConvexPolygons(pathData)
     } catch (error) {
+      // 防御性包装：上游分解几乎不抛错，抛出时也带上字体来源便于定位
       throw new Error(
-        `Failed to triangulate a glyph from font "${describeFont(font)}". ` +
-          'Some fonts contain open or self-intersecting contours that the ' +
-          'triangulation algorithm cannot handle.',
+        `Failed to decompose a glyph from font "${describeFont(font)}"`,
         { cause: error }
       )
     }
 
     return {
-      paths: triangulated,
+      paths: { polygons: decomposed },
       pathData: pathData,
       rect: {
         x: bbox.x1,
