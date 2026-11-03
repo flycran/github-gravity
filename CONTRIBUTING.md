@@ -25,7 +25,7 @@ bun run build:web          # 网页版构建，输出 dist-web/（不入库）
 
 - Commit message 使用 Conventional Commits（`feat:` / `fix:` / `chore:` / `ci:`），中文描述；
 - `dist/` 的重建单独作为一个 `chore: 重新构建 dist` 提交；
-- 从分支向 main 发起 PR，CI 全绿后合并。
+- 从分支向 main 发起 PR，等待维护者合并。
 
 ## 发布
 
