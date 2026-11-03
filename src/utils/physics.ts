@@ -119,6 +119,25 @@ export class Contribution implements ContributionJson {
   }
 }
 
+/**
+ * 惰性下边界：移除掉出画面底部两倍块深的贡献块（连同刚体）。
+ * 该深度的方块不可见且不会再落回画面，留着只会无限下落拖垮静止判断；
+ * 上方飞出的方块受重力会落回画面，不在清理范围
+ */
+export function pruneFallenBlocks(
+  world: World,
+  contributions: Contribution[],
+  size: number
+): void {
+  for (let i = contributions.length - 1; i >= 0; i--) {
+    const body = contributions[i].collider.parent()
+    if (body && body.translation().y < -2 * size) {
+      world.removeRigidBody(body)
+      contributions.splice(i, 1)
+    }
+  }
+}
+
 async function createWord(width: number, height: number) {
   await init()
   // 重力
@@ -458,15 +477,7 @@ export async function startSimulation(
       contribution.update()
     }
 
-    // 惰性下边界：掉出画面底部两倍块深的方块不可见也不会再落回画面，
-    // 移除防止其无限下落拖垮静止判断；上方飞出的受重力会落回，不处理
-    for (let i = contributions.length - 1; i >= 0; i--) {
-      const body = contributions[i].collider.parent()
-      if (body && body.translation().y < -2 * size) {
-        world.removeRigidBody(body)
-        contributions.splice(i, 1)
-      }
-    }
+    pruneFallenBlocks(world, contributions, size)
 
     if (stepCount > 2 && areAllCollidersSleeping()) break
     // 最大模拟时间以播放时长计：模拟时长达到它乘以倍速即停止，返回已模拟出的轨迹
