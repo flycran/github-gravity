@@ -1,3 +1,4 @@
+import { DEFAULT_OPTIONS } from '../const'
 import { GensvgOptions, gensvg } from '../utils/gensvg'
 import { DEFAULT_FONT_URL } from './const'
 
@@ -146,7 +147,7 @@ const ACTION_INPUT_NAMES: Partial<Record<keyof GensvgOptions, string>> = {
 }
 
 /**
- * 把表单配置生成为 Action 用法 YAML 片段。
+ * 把表单配置生成为 Action 用法 YAML 片段，只包含偏离默认值的字段。
  * 字符串值统一走 JSON 风格双引号，含特殊字符也合法；
  * 上传的字体文件带不进 workflow，只有字体 URL 会映射为 font-path
  */
@@ -154,9 +155,16 @@ function buildActionSnippet(options: GensvgOptions): string {
   const lines = ['- uses: flycran/github-gravity@v3', '  with:']
   for (const [key, input] of Object.entries(ACTION_INPUT_NAMES)) {
     const value = options[key as keyof GensvgOptions]
-    // 未填写的字段靠 Action 默认值，false 与默认一致，都省略
-    if (value === undefined || value === '' || value === false) continue
+    if (value === undefined || value === '') continue
     if (key === 'font' && typeof value !== 'string') continue
+    // 与 Action 默认行为一致的项省略：片段只保留显式调整的配置。
+    // text 的默认是 username，字体默认是仓库内置字体 URL
+    const fallback =
+      key === 'text'
+        ? options.username
+        : (DEFAULT_OPTIONS as Record<string, unknown>)[key]
+    if (value === fallback) continue
+    if (key === 'font' && value === DEFAULT_FONT_URL) continue
     lines.push(
       `    ${input}: ${typeof value === 'string' ? JSON.stringify(value) : value}`
     )
