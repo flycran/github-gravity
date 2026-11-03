@@ -28799,6 +28799,8 @@ const TIMESTEP = 1 / 30;
 const GRAVITY = 1.5;
 /** 速度小于此阈值视为静止 */
 const VELOCITY_THRESHOLD = 0.1;
+/** 连续静止帧数达到该值才判定全部静止（约 0.5 秒）；确认期记录的帧在返回前截掉 */
+const SETTLE_CONFIRM_FRAMES = 15;
 /** 未设置最大模拟时间时的模拟步数上限，超出视为无法收敛，直接抛错终止模拟 */
 const MAX_STEPS = 9000;
 // 先取值再构造 URL，避免打包器把「new URL(字面量, import.meta.url)」识别为资源声明
@@ -46395,6 +46397,10 @@ class Contribution {
     getTrajectory() {
         return this.trajectory;
     }
+    /** 移除轨迹末尾 count 个点（至少保留首点） */
+    truncateTail(count) {
+        this.trajectory.length = Math.max(1, this.trajectory.length - count);
+    }
     toJSON() {
         return {
             color: this.color,
@@ -46538,7 +46544,7 @@ async function startSimulation(options) {
     // 容差从 SVG 像素换算回物理坐标单位，让压缩函数与渲染缩放解耦；
     // 显式禁用压缩时保留原始轨迹，消费端回退到 SMIL 默认均分时间
     const tolerance = compressionTolerance / SCALE;
-    /** 判断所有 collider 的刚体是否都已静止（线速度与角速度均低于阈值） */
+    /** 判断所有贡献块的刚体是否都已静止（线速度与角速度均低于阈值） */
     function areAllCollidersSleeping() {
         for (const contribution of contributions) {
             const body = contribution.collider.parent();
@@ -46555,6 +46561,8 @@ async function startSimulation(options) {
         return true;
     }
     let stepCount = 0;
+    /** 连续静止帧计数，任何一帧仍有物体在运动即清零 */
+    let stillFrames = 0;
     const startTime = Date.now();
     while (true) {
         world.step();
@@ -46563,8 +46571,17 @@ async function startSimulation(options) {
             contribution.update();
         }
         pruneFallenBlocks(world, contributions, size);
-        if (stepCount > 2 && areAllCollidersSleeping())
+        // 连续多帧静止才判定完成：弹跳顶点的瞬时零速凑不满确认帧数，不会误停
+        stillFrames = areAllCollidersSleeping() ? stillFrames + 1 : 0;
+        if (stillFrames >= SETTLE_CONFIRM_FRAMES) {
+            // 确认静止多记录了 SETTLE_CONFIRM_FRAMES 帧，其间所有物体均已不再移动，
+            // 各轨迹同步截掉这些帧保持长度一致，总时长相应缩短到实际静止时刻
+            stepCount -= SETTLE_CONFIRM_FRAMES;
+            for (const contribution of contributions) {
+                contribution.truncateTail(SETTLE_CONFIRM_FRAMES);
+            }
             break;
+        }
         // 最大模拟时间以播放时长计：模拟时长达到它乘以倍速即停止，返回已模拟出的轨迹
         if (maxSimulationTime !== undefined &&
             stepCount * TIMESTEP >= maxSimulationTime * speed) {
