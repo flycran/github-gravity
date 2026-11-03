@@ -33,6 +33,8 @@ const INPUT_NAMES = [
   'TEXT-TOP',
   'BACKGROUND-COLOR',
   'TEXT-COLOR',
+  'CSS',
+  'ANIMATION',
   'WIDTH',
   'HEIGHT',
   'SIZE',
@@ -98,6 +100,20 @@ describe('action input plumbing', () => {
     expect(captured?.size).toBeUndefined()
     expect(captured?.interval).toBeUndefined()
     expect(captured?.font).toBeUndefined()
+    // 开关型输入未填写时默认关闭
+    expect(captured?.css).toBe(false)
+    expect(captured?.animation).toBeUndefined()
+  })
+
+  it('forwards the css engine switch and custom animation', async () => {
+    setInputs({ CSS: 'true', ANIMATION: 'var(--n) 2s linear' })
+
+    await run()
+
+    expect(captured).toMatchObject({
+      css: true,
+      animation: 'var(--n) 2s linear'
+    })
   })
 
   it('forwards compression options and world geometry as numbers', async () => {
