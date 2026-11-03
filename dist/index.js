@@ -46451,7 +46451,6 @@ async function createSimulationWorld(options) {
             if (contributionDay.count) {
                 const x = left + (interval + size) * rowIndex;
                 const y = top + (interval + size) * dayOfWeek;
-                // 动态刚体：圆形物理模拟更丝滑，不容易穿模
                 const colliderDesc = (shape === 'square'
                     ? wg.cuboid(size / 2, size / 2)
                     : wg.ball(size / 2))
