@@ -40,6 +40,7 @@ function getAlgorithm(name: string): 'Greedy' | 'DP' | 'RDP' | undefined {
  * - css: 启用 CSS @keyframes 动画引擎，默认为 SMIL
  * - animation: 自定义 CSS animation 值（仅 css 引擎有效），默认 var(--n) var(--dur) linear both
  * - width / height / size / interval / font-path: 高级自定义项，改动影响渲染效果
+ * - friction / restitution: 贡献方块的摩擦系数与弹性，默认 0.3 / 0
  *
  * 输出：
  * - svg-path: 生成的 SVG 文件路径
@@ -66,6 +67,8 @@ export async function run(): Promise<void> {
     const height = getOptionalNumber('height')
     const size = getOptionalNumber('size')
     const interval = getOptionalNumber('interval')
+    const friction = getOptionalNumber('friction')
+    const restitution = getOptionalNumber('restitution')
     const fontPath = core.getInput('font-path')
 
     core.info(`Generating gravity SVG for user: ${username}`)
@@ -92,6 +95,8 @@ export async function run(): Promise<void> {
       height,
       size,
       interval,
+      friction,
+      restitution,
       font: fontPath || undefined
     })
 

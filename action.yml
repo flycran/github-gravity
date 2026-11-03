@@ -113,6 +113,18 @@ inputs:
       too large pushes them out of the world bounds.
     required: false
     default: '1.5'
+  friction:
+    description: >-
+      Friction coefficient of the contribution blocks.
+    required: false
+    default: '0.3'
+  restitution:
+    description: >-
+      Restitution (bounciness) of the contribution blocks. Values far from 0 may fling
+      blocks out of the visible area; such blocks are removed once they fall below the
+      world bottom.
+    required: false
+    default: '0'
   font-path:
     description: >-
       Path to a custom font (.ttf/.otf), relative to the repository root, or an http(s) URL.

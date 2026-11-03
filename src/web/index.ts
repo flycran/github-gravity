@@ -105,6 +105,8 @@ async function readOptions(data: FormData): Promise<GensvgOptions> {
     disableCompression: data.get('disableCompression') === 'on',
     fontSize: num('fontSize'),
     textTop: num('textTop'),
+    friction: num('friction'),
+    restitution: num('restitution'),
     scale: num('scale'),
     speed: num('speed'),
     // 优先级：上传的文件 > 填写的 URL > 仓库里的内置字体

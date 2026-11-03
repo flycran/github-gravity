@@ -2,8 +2,6 @@ import { GensvgOptions } from './utils/gensvg'
 
 export const SCALE = 1
 
-export const FRICTION = 0.3
-
 /** 固定物理步长（秒） */
 export const TIMESTEP = 1 / 30
 
@@ -42,5 +40,7 @@ export const DEFAULT_OPTIONS: Required<
   disableCompression: false,
   compressionTolerance: 0.5,
   font: DEFAULT_FONT,
-  interval: 1.5
+  interval: 1.5,
+  friction: 0.3,
+  restitution: 0
 }
