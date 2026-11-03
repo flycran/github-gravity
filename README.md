@@ -45,6 +45,8 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 | `compression-algorithm` | ❌ | `Greedy` | Trajectory compression algorithm: `Greedy` (fast), `DP` (smallest SVG), `RDP` (fastest). See below for the trade-offs |
 | `max-simulation-time` | ❌ | - | Maximum simulation time in seconds, counted as playback duration (simulated time = this value × `speed`). When reached, the trajectory simulated so far is returned instead of waiting for every block to settle. Leave empty to simulate until all blocks rest |
 | `shape` | ❌ | `circle` | Shape of contribution blocks: `circle` or `square` |
+| `friction` | ❌ | `0.3` | Friction coefficient of the contribution blocks |
+| `restitution` | ❌ | `0` | Restitution (bounciness) of the contribution blocks. Values far from 0 may fling blocks out of the visible area; blocks falling below the world bottom are removed |
 | `text-top` | ❌ | `50` | Distance from the top of the world to the text |
 | `background-color` | ❌ | `transparent` | Background color of the SVG (CSS color value) |
 | `text-color` | ❌ | `black` | Color of the collision text (CSS color value) |

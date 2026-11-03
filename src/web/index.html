@@ -159,14 +159,31 @@
       cursor: pointer;
     }
 
+    .action-row {
+      display: flex;
+      gap: 6px;
+    }
+
     #generate {
-      width: 100%;
+      flex: 1;
       padding: 6px 18px;
       border: none;
       border-radius: 4px;
       background-color: #eb510a;
       color: #fff;
       font: inherit;
+      cursor: pointer;
+    }
+
+    #copy-action {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      padding: 0;
+      border: 1px solid #d0d7de;
+      border-radius: 4px;
+      background-color: transparent;
+      color: inherit;
       cursor: pointer;
     }
 
@@ -240,7 +257,8 @@
     }
 
     /* UA 样式的 [hidden] 不作用于 SVG 元素，需要显式隐藏 */
-    #play svg[hidden] {
+    #play svg[hidden],
+    #copy-action svg[hidden] {
       display: none;
     }
 
@@ -335,6 +353,24 @@
             value="50"
             min="0" /></label
         >
+        <label
+          >摩擦系数 / Friction<input
+            name="friction"
+            type="number"
+            value="0.3"
+            min="0"
+            max="1"
+            step="any" /></label
+        >
+        <label
+          >弹性 / Restitution<input
+            name="restitution"
+            type="number"
+            value="0"
+            min="0"
+            max="1"
+            step="any" /></label
+        >
         <details class="advanced">
           <summary>高级设置 / Advanced</summary>
           <div class="advanced-fields">
@@ -419,7 +455,44 @@
           </div>
         </details>
       </div>
-      <button id="generate" type="submit">生成</button>
+      <div class="action-row">
+        <button id="generate" type="submit">生成</button>
+        <button
+          id="copy-action"
+          type="button"
+          title="复制 Action 配置 / Copy action usage"
+          aria-label="复制 Action 配置 / Copy action usage">
+          <svg
+            id="copy-icon"
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round">
+            <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+            <path
+              d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+          </svg>
+          <svg
+            id="copy-check"
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            hidden>
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        </button>
+      </div>
     </form>
 
     <main id="stage">

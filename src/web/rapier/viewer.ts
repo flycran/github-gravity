@@ -68,6 +68,12 @@ export interface WorldViewerOptions {
    * 只改变时间流逝速度，物理步长仍是固定的 timestep，模拟结果不受影响
    */
   playbackSpeed?: number
+  /**
+   * 每次物理步进后的世界后处理钩子（自动播放与手动单步都会调用），
+   * 可用于移除逃逸方块等清理。移除刚体后其 collider 在快照的
+   * colliders 数组中按失效占位，下标对齐不受影响
+   */
+  afterStep?: (world: World) => void
 }
 
 /** 选出让相邻主刻度间距不小于 MIN_TICK_SPACING 的最小整步长 */
@@ -230,7 +236,8 @@ export async function runWorldViewer({
   createWorld,
   bounds,
   timestep,
-  playbackSpeed = 1
+  playbackSpeed = 1,
+  afterStep
 }: WorldViewerOptions) {
   const mapper = createScreenMapper(bounds)
   const worldWidth = mapper.width
@@ -300,6 +307,8 @@ export async function runWorldViewer({
   function recordSnapshot() {
     const data = new Float32Array(colliders.length * 3)
     for (let i = 0; i < colliders.length; i++) {
+      // afterStep 移除过的 collider 保持零值占位：快照按固定下标对齐，不能压缩数组
+      if (!colliders[i].isValid()) continue
       const origin = colliders[i].translation()
       data[i * 3] = origin.x
       data[i * 3 + 1] = origin.y
@@ -317,6 +326,8 @@ export async function runWorldViewer({
     if (snapshot) {
       // 回溯查看：按快照位姿绘制，不改动物理世界本身
       for (let i = 0; i < colliders.length; i++) {
+        // 已被 afterStep 移除的 collider 不绘制；实时分支遍历 world 天然不含它们
+        if (!colliders[i].isValid()) continue
         drawCollider(graphics, colliders[i], lineWidth, mapper, {
           x: snapshot[i * 3],
           y: snapshot[i * 3 + 1],
@@ -520,6 +531,7 @@ export async function runWorldViewer({
       )
       while (accumulator >= timestep) {
         world.step()
+        afterStep?.(world)
         stepCount++
         if (
           history.length < MAX_SNAPSHOTS &&
@@ -555,6 +567,7 @@ export async function runWorldViewer({
   stepButton.addEventListener('click', () => {
     viewingIndex = -1
     world.step()
+    afterStep?.(world)
     stepCount++
     // 手动单步后清掉累积量，避免继续播放时立刻补一步
     accumulator = 0

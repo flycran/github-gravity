@@ -8,7 +8,6 @@ import {
 import type { Polygon } from 'poly-decomp-es'
 import {
   DEFAULT_OPTIONS,
-  FRICTION,
   GRAVITY,
   MAX_STEPS,
   SCALE,
@@ -116,6 +115,25 @@ export class Contribution implements ContributionJson {
       color: this.color,
       date: this.date,
       trajectory: this.trajectory
+    }
+  }
+}
+
+/**
+ * 惰性下边界：移除掉出画面底部两倍块深的贡献块（连同刚体）。
+ * 该深度的方块不可见且不会再落回画面，留着只会无限下落拖垮静止判断；
+ * 上方飞出的方块受重力会落回画面，不在清理范围
+ */
+export function pruneFallenBlocks(
+  world: World,
+  contributions: Contribution[],
+  size: number
+): void {
+  for (let i = contributions.length - 1; i >= 0; i--) {
+    const body = contributions[i].collider.parent()
+    if (body && body.translation().y < -2 * size) {
+      world.removeRigidBody(body)
+      contributions.splice(i, 1)
     }
   }
 }
@@ -243,8 +261,12 @@ export interface SimulationOptions {
    * RDP（时空版 Ramer-Douglas-Peucker，最快，关键帧略多）
    */
   compressionAlgorithm?: 'Greedy' | 'DP' | 'RDP'
-  /** 贡献方块的形状：circle（圆形）或 square（方形）。圆形物理模拟更丝滑，不容易穿模。 */
+  /** 贡献方块的形状：circle（圆形）或 square（方形） */
   shape?: 'circle' | 'square'
+  /** 贡献方块的摩擦系数，默认 0.3 */
+  friction?: number
+  /** 贡献方块的弹性（碰撞恢复系数），默认 0 */
+  restitution?: number
   /**
    * 物理世界宽度，默认 300。
    * 谨慎修改：方块横向布局、文字居中位置与最终 SVG 宽度都由它推算，改动后请自行核对效果
@@ -313,7 +335,9 @@ export async function createSimulationWorld(
     interval,
     fontSize,
     width,
-    height
+    height,
+    friction,
+    restitution
   } = withDefaults(DEFAULT_OPTIONS, options)
   const world = await createWord(width, height)
   const contributions: Contribution[] = []
@@ -342,9 +366,10 @@ export async function createSimulationWorld(
         flippedVertices[i * 2 + 1] = -polygon[i][1]
       }
       // 顶点近乎共线的退化凸块求不出凸包，跳过
+      // 文字摩擦为固定值，不随贡献块的 friction 选项调整
       const colliderDesc = ColliderDesc.convexHull(flippedVertices)
       if (!colliderDesc) continue
-      world.createCollider(colliderDesc.setFriction(FRICTION), textBody)
+      world.createCollider(colliderDesc.setFriction(0.3), textBody)
     }
   }
 
@@ -370,14 +395,13 @@ export async function createSimulationWorld(
       if (contributionDay.count) {
         const x = left + (interval + size) * rowIndex
         const y = top + (interval + size) * dayOfWeek
-        // 动态刚体：圆形物理模拟更丝滑，不容易穿模
         const colliderDesc = (
           shape === 'square'
             ? ColliderDesc.cuboid(size / 2, size / 2)
             : ColliderDesc.ball(size / 2)
         )
-          .setFriction(FRICTION)
-          .setRestitution(0.4)
+          .setFriction(friction)
+          .setRestitution(restitution)
         const boxCollider = world.createCollider(
           colliderDesc,
           world.createRigidBody(
@@ -409,6 +433,7 @@ export async function startSimulation(
 ): Promise<SimulationResult> {
   const {
     shape,
+    size,
     compressionAlgorithm,
     compressionTolerance,
     disableCompression,
@@ -450,6 +475,8 @@ export async function startSimulation(
     for (const contribution of contributions) {
       contribution.update()
     }
+
+    pruneFallenBlocks(world, contributions, size)
 
     if (stepCount > 2 && areAllCollidersSleeping()) break
     // 最大模拟时间以播放时长计：模拟时长达到它乘以倍速即停止，返回已模拟出的轨迹

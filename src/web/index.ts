@@ -1,3 +1,4 @@
+import { DEFAULT_OPTIONS } from '../const'
 import { GensvgOptions, gensvg } from '../utils/gensvg'
 import { DEFAULT_FONT_URL } from './const'
 
@@ -14,6 +15,11 @@ const fontInput = document.getElementById('font') as HTMLInputElement
 const fontLabel = document.getElementById('font-label') as HTMLSpanElement
 const fontUrlInput = document.getElementById('font-url') as HTMLInputElement
 const clearFontBtn = document.getElementById('clear-font') as HTMLButtonElement
+const copyActionBtn = document.getElementById(
+  'copy-action'
+) as HTMLButtonElement
+const copyIcon = document.getElementById('copy-icon') as SVGElement
+const copyCheck = document.getElementById('copy-check') as SVGElement
 
 /** 当前动画总时长（ms），由模拟结果决定 */
 let duration = 0
@@ -105,6 +111,8 @@ async function readOptions(data: FormData): Promise<GensvgOptions> {
     disableCompression: data.get('disableCompression') === 'on',
     fontSize: num('fontSize'),
     textTop: num('textTop'),
+    friction: num('friction'),
+    restitution: num('restitution'),
     scale: num('scale'),
     speed: num('speed'),
     // 优先级：上传的文件 > 填写的 URL > 仓库里的内置字体
@@ -118,6 +126,65 @@ async function readOptions(data: FormData): Promise<GensvgOptions> {
 function getSvg(): SVGSVGElement | null {
   return canvas.querySelector('svg')
 }
+
+/** 表单选项 → Action input 名；disableCompression 无对应输入故不在表中 */
+const ACTION_INPUT_NAMES: Partial<Record<keyof GensvgOptions, string>> = {
+  username: 'username',
+  text: 'text',
+  shape: 'shape',
+  backgroundColor: 'background-color',
+  textColor: 'text-color',
+  css: 'css',
+  animation: 'animation',
+  maxSimulationTime: 'max-simulation-time',
+  compressionTolerance: 'compression-tolerance',
+  compressionAlgorithm: 'compression-algorithm',
+  fontSize: 'font-size',
+  textTop: 'text-top',
+  friction: 'friction',
+  restitution: 'restitution',
+  scale: 'scale',
+  speed: 'speed',
+  font: 'font-path'
+}
+
+/**
+ * 把表单配置生成为 Action 用法 YAML 片段，只包含偏离默认值的字段。
+ * 字符串值统一走 JSON 风格双引号，含特殊字符也合法；
+ * 上传的字体文件带不进 workflow，只有字体 URL 会映射为 font-path
+ */
+function buildActionSnippet(options: GensvgOptions): string {
+  const lines = ['- uses: flycran/github-gravity@v3', '  with:']
+  for (const [key, input] of Object.entries(ACTION_INPUT_NAMES)) {
+    const value = options[key as keyof GensvgOptions]
+    if (value === undefined || value === '') continue
+    if (key === 'font' && typeof value !== 'string') continue
+    // 与 Action 默认行为一致的项省略：片段只保留显式调整的配置。
+    // text 的默认是 username，字体默认是仓库内置字体 URL
+    const fallback =
+      key === 'text'
+        ? options.username
+        : (DEFAULT_OPTIONS as Record<string, unknown>)[key]
+    if (value === fallback) continue
+    if (key === 'font' && value === DEFAULT_FONT_URL) continue
+    lines.push(
+      `    ${input}: ${typeof value === 'string' ? JSON.stringify(value) : value}`
+    )
+  }
+  return lines.join('\n')
+}
+
+copyActionBtn.addEventListener('click', async () => {
+  const snippet = buildActionSnippet(await readOptions(new FormData(form)))
+  await navigator.clipboard.writeText(snippet)
+  // 点击反馈：复制图标短暂切换为对勾后复原
+  copyIcon.toggleAttribute('hidden', true)
+  copyCheck.toggleAttribute('hidden', false)
+  setTimeout(() => {
+    copyIcon.toggleAttribute('hidden', false)
+    copyCheck.toggleAttribute('hidden', true)
+  }, 1500)
+})
 
 function updatePlayIcon() {
   iconPlay.toggleAttribute('hidden', playing)
