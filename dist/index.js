@@ -45929,6 +45929,50 @@ function svgPathToConvexPolygons(path, scale = 1, tolerance = 1) {
     }
     return polygons;
 }
+/**
+ * 把 opentype 路径序列化为 SVG path data（保留 2 位小数）。
+ *
+ * 不用 Path#toPathData：它以原始值的正负决定是否补数字间的空格，而坐标四舍五入到
+ * -0 时负号会被丢掉，导致相邻数字粘连成畸形数据（opentypejs/opentype.js#881）。
+ * 这里改为按序列化结果是否以负号开头来补空格。
+ */
+function serializePathData(path) {
+    // Number.isInteger 同时覆盖 round 到 0 与 -0 的情况：String(-0) 为 "0"，负号省略
+    const fmt = (v) => {
+        const rounded = Math.round(v * 100) / 100;
+        return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+    };
+    const pack = (values) => {
+        let s = '';
+        values.forEach((v, i) => {
+            const str = fmt(v);
+            // 负数靠负号与前面的数字分隔，其余情况必须补空格
+            if (i > 0 && str[0] !== '-')
+                s += ' ';
+            s += str;
+        });
+        return s;
+    };
+    let d = '';
+    for (const cmd of path.commands) {
+        switch (cmd.type) {
+            case 'M':
+            case 'L':
+                d += `${cmd.type}${pack([cmd.x, cmd.y])}`;
+                break;
+            case 'C':
+                d += `C${pack([cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.x, cmd.y])}`;
+                break;
+            case 'Q':
+                d += `Q${pack([cmd.x1, cmd.y1, cmd.x, cmd.y])}`;
+                break;
+            case 'Z':
+                d += 'Z';
+                break;
+        }
+    }
+    return d;
+}
 /** Buffer / Uint8Array 可能是共享 ArrayBuffer 的一段视图，必须按实际偏移截取副本 */
 function viewToArrayBuffer(view) {
     return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
@@ -46022,7 +46066,7 @@ async function getTextPaths(text, fontSize, font) {
     }
     return paths.map((path) => {
         const bbox = path.getBoundingBox();
-        const pathData = path.toPathData(2);
+        const pathData = serializePathData(path);
         let decomposed;
         try {
             decomposed = svgPathToConvexPolygons(pathData);
