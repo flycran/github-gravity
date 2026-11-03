@@ -50,6 +50,8 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 | `text-color` | ❌ | `black` | Color of the collision text (CSS color value) |
 | `scale` | ❌ | `3` | Display zoom factor: the SVG `width`/`height` are the physics dimensions × scale, while the viewBox keeps the raw physics size |
 | `speed` | ❌ | `3` | Playback speed multiplier: the animation duration is the simulated time ÷ speed |
+| `css` | ❌ | `false` | Use the CSS animation engine instead of SMIL `animateTransform`. See below |
+| `animation` | ❌ | `var(--n) var(--dur) linear both` | Custom CSS `animation` value for the CSS engine. ⚠️ Modify with caution — a wrong value breaks the animation. Requires `css: true` |
 | `width` | ❌ | `300` | Width of the physics world. ⚠️ Affects layout and SVG size |
 | `height` | ❌ | `150` | Height of the physics world. ⚠️ Affects layout and SVG size |
 | `size` | ❌ | `4` | Side length of each contribution block. ⚠️ Affects physics |
@@ -60,9 +62,8 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 
 The trajectory is compressed by default: `compression-tolerance` (default `0.5`) merges
 trajectory points into keyframes so that, at every original moment, the interpolated
-position stays within the given distance (in SVG pixels) of the real one. Each keyframe
-keeps its original timing via `keyTimes`, so speed changes — bounces, landings, stops —
-play back at their real pace.
+position stays within the given distance (in SVG pixels) of the real one — speed changes
+such as bounces, landings and stops keep their real pace.
 
 The default is invisible to the eye and already shrinks the output by orders of magnitude,
 so most setups can keep it. Set `0` for a lossless trajectory — only uniform straight
@@ -82,6 +83,30 @@ points each at the default tolerance `0.5`:
 | `RDP` | 37.1 | 26.6x | ~40ms | Fastest, keeps the most keyframes. |
 
 In most cases, just keep the default.
+
+### Animation engine
+
+Two output engines are available; both produce a single static SVG file and play the
+same trajectory at the same pace:
+
+- **SMIL** (default) drives every block with `<animateTransform>` elements.
+- **CSS** (`css: true`) drops those elements and declares all animations in one
+  self-contained `<style>` block: each block's trajectory becomes a `@keyframes` rule.
+
+The rendered animation is identical. Choose CSS when the target environment handles
+SMIL poorly — some sanitizers strip SMIL animation elements, while CSS animation in
+SVG is more widely supported (GitHub READMEs load SVGs via `<img>`, where both work).
+The CSS output is slightly larger than SMIL.
+
+With `css: true`, the `animation` input replaces the animation declaration applied to
+every block (default `var(--n) var(--dur) linear both`). Available variables:
+
+- `--n` — each block's keyframes name, required
+- `--dur` — the playback duration
+
+⚠️ This value is spliced into the generated style block as-is — modify with caution,
+a wrong value breaks the animation. Verify in the web preview before committing.
+Must not contain braces, semicolons or `]]>`.
 
 ### Advanced customization
 

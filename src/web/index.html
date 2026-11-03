@@ -300,6 +300,9 @@
             <option value="square">方形</option>
           </select>
         </label>
+        <label class="inline">
+          <input name="css" type="checkbox" />CSS 动画引擎 / CSS animation
+        </label>
         <label
           >背景颜色 / Background<input
             name="backgroundColor"
@@ -403,6 +406,12 @@
                 <option value="RDP">RDP（最快）</option>
               </select>
             </label>
+            <label
+              >自定义动画 / Custom animation<input
+                name="animation"
+                placeholder="默认 var(--n) var(--dur) linear both"
+                title="仅 CSS 引擎生效。可用变量：--n 动画名、--dur 时长；不能包含花括号、分号" /></label
+            >
             <label class="inline">
               <input name="disableCompression" type="checkbox" />禁用压缩 / No
               compression

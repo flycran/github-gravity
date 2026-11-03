@@ -36,6 +36,8 @@ export const DEFAULT_OPTIONS: Required<
   fontSize: 48,
   backgroundColor: 'transparent',
   textColor: 'black',
+  css: false,
+  animation: 'var(--n) var(--dur) linear both',
   compressionAlgorithm: 'Greedy',
   disableCompression: false,
   compressionTolerance: 0.5,

@@ -297,3 +297,52 @@ describe('full pipeline integration', () => {
     ).rejects.toThrow('Failed to load font "/nonexistent/font.ttf"')
   })
 })
+
+describe('css animation engine', () => {
+  beforeEach(() => {
+    mockFetchContributions.mockImplementation(async () =>
+      mockContributionsResponse()
+    )
+  })
+
+  afterEach(() => {
+    mockFetchContributions.mockReset()
+  })
+
+  // 只冒烟引擎切换本身；动画的具体声明失效会直接表现为不动/走样，浏览器里肉眼可见
+  it('renders with a self-contained style block instead of animateTransform', async () => {
+    const svg = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40,
+      css: true
+    })
+
+    expect(svg).toContain('<style>')
+    expect(svg).not.toContain('animateTransform')
+  })
+
+  it('applies a custom animation value', async () => {
+    const svg = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40,
+      css: true,
+      animation: 'none'
+    })
+
+    expect(svg).toContain('animation:none')
+  })
+
+  it('rejects animation values that would break the style block', async () => {
+    await expect(
+      gensvg({
+        username: 'testuser',
+        text: 'Hi',
+        fontSize: 40,
+        css: true,
+        animation: '2s;color:red'
+      })
+    ).rejects.toThrow('Invalid animation')
+  })
+})

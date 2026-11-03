@@ -389,13 +389,16 @@ export async function createSimulationWorld(
           shape === 'square'
             ? ColliderDesc.cuboid(size / 2, size / 2)
             : ColliderDesc.ball(size / 2)
-        ).setFriction(FRICTION)
+        )
+          .setFriction(FRICTION)
+          .setRestitution(0.4)
         const boxCollider = world.createCollider(
           colliderDesc,
           world.createRigidBody(
             RigidBodyDesc.dynamic()
               .setGravityScale(GRAVITY)
               .setTranslation(x, y)
+              .setLinearDamping(0.05)
           )
         )
 

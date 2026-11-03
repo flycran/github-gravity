@@ -37,6 +37,8 @@ function getAlgorithm(name: string): 'Greedy' | 'DP' | 'RDP' | undefined {
  * - max-simulation-time: 最大模拟时间（秒，按播放时长计，会乘以倍速换算模拟时长），达到后返回已模拟的轨迹；不传则模拟到静止为止
  * - scale: SVG 显示缩放，默认为 3
  * - speed: 播放倍速，默认为 3
+ * - css: 启用 CSS @keyframes 动画引擎，默认为 SMIL
+ * - animation: 自定义 CSS animation 值（仅 css 引擎有效），默认 var(--n) var(--dur) linear both
  * - width / height / size / interval / font-path: 高级自定义项，改动影响渲染效果
  *
  * 输出：
@@ -53,6 +55,8 @@ export async function run(): Promise<void> {
     const backgroundColor: string =
       core.getInput('background-color') || 'transparent'
     const textColor: string = core.getInput('text-color') || 'black'
+    const css = core.getInput('css') === 'true'
+    const animation = core.getInput('animation') || undefined
     const compressionTolerance = getOptionalNumber('compression-tolerance')
     const compressionAlgorithm = getAlgorithm('compression-algorithm')
     const maxSimulationTime = getOptionalNumber('max-simulation-time')
@@ -77,6 +81,8 @@ export async function run(): Promise<void> {
       textTop,
       backgroundColor,
       textColor,
+      css,
+      animation,
       compressionTolerance,
       compressionAlgorithm,
       maxSimulationTime,

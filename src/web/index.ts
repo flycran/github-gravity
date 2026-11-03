@@ -19,6 +19,59 @@ const clearFontBtn = document.getElementById('clear-font') as HTMLButtonElement
 let duration = 0
 let playing = false
 
+/** 播放控制的统一时钟：SMIL 引擎走文档时钟，CSS 引擎走 Web Animations API */
+interface AnimationClock {
+  /** 当前时间（ms） */
+  now(): number
+  /** 动画总时长（ms） */
+  totalDuration(): number
+  pause(): void
+  play(): void
+  seek(ms: number): void
+}
+
+function smilClock(svg: SVGSVGElement): AnimationClock {
+  return {
+    now: () => Math.round(svg.getCurrentTime() * 1000),
+    totalDuration: () => {
+      const raw = svg.querySelector('animateTransform')?.getAttribute('dur')
+      const ms = raw ? parseFloat(raw) : NaN
+      return Number.isFinite(ms) ? ms : 0
+    },
+    pause: () => svg.pauseAnimations(),
+    play: () => svg.unpauseAnimations(),
+    seek: (ms) => svg.setCurrentTime(ms / 1000)
+  }
+}
+
+function cssClock(container: SVGSVGElement): AnimationClock {
+  // 依赖 getAnimations 调用时 flush 样式的规范行为：innerHTML 插入后同步即可取到全部动画
+  const animations = [...container.querySelectorAll('#b>g')].flatMap((g) =>
+    g.getAnimations()
+  )
+  return {
+    now: () => Math.max(0, ...animations.map((a) => a.currentTime ?? 0)),
+    // 从动画对象读实际时长：自定义 animation 写死独立时长时依然准确
+    totalDuration: () =>
+      Math.max(
+        0,
+        ...animations.map((a) => +(a.effect?.getComputedTiming().duration ?? 0))
+      ),
+    pause: () => animations.forEach((a) => a.pause()),
+    play: () => animations.forEach((a) => a.play()),
+    seek: (ms) => animations.forEach((a) => (a.currentTime = ms))
+  }
+}
+
+/** 按生成结果选择时钟：CSS 引擎没有 animateTransform 元素，动画声明在 style 块里 */
+function buildClock(): AnimationClock | null {
+  const svg = getSvg()
+  if (!svg) return null
+  return svg.querySelector('animateTransform') ? smilClock(svg) : cssClock(svg)
+}
+
+let clock: AnimationClock | null = null
+
 /** 读取表单选项，未填写的字段值为 undefined */
 async function readOptions(data: FormData): Promise<GensvgOptions> {
   const str = (key: string): string | undefined => {
@@ -41,6 +94,8 @@ async function readOptions(data: FormData): Promise<GensvgOptions> {
     shape: data.get('shape') === 'square' ? 'square' : 'circle',
     backgroundColor: str('backgroundColor'),
     textColor: str('textColor'),
+    css: data.get('css') === 'on',
+    animation: str('animation'),
     maxSimulationTime: num('maxSimulationTime'),
     compressionTolerance: num('compressionTolerance'),
     compressionAlgorithm:
@@ -74,26 +129,18 @@ function renderProgress(ms: number) {
   timeLabel.textContent = `${(ms / 1000).toFixed(2)}s / ${(duration / 1000).toFixed(2)}s`
 }
 
-/** SMIL 文档时间秒 → 整毫秒：浏览器返回值带量化误差（如 6.831998825073242），直接与 dur 毫秒值比较会永远差零点几毫秒 */
-function currentMs(svg: SVGSVGElement): number {
-  return Math.round(svg.getCurrentTime() * 1000)
-}
-
-// SMIL 文档时间是播放状态的唯一来源，进度条只是它的视图
 function seek(ms: number) {
-  getSvg()?.setCurrentTime(ms / 1000)
+  clock?.seek(ms)
   renderProgress(ms)
 }
 
 function tick() {
   if (!playing) return
-  const svg = getSvg()
-  if (!svg) return
-  const ms = currentMs(svg)
+  const ms = clock?.now() ?? 0
   if (ms >= duration) {
-    // 冻结 SMIL 时钟并钉在末帧，避免文档时间空转
-    svg.pauseAnimations()
-    svg.setCurrentTime(duration / 1000)
+    // 钉在末帧，避免时钟空转
+    clock?.pause()
+    clock?.seek(duration)
     playing = false
     updatePlayIcon()
     renderProgress(duration)
@@ -104,26 +151,18 @@ function tick() {
 }
 
 function togglePlay() {
-  const svg = getSvg()
-  if (!svg || duration === 0) return
+  if (!clock || duration === 0) return
   if (playing) {
-    svg.pauseAnimations()
+    clock.pause()
     playing = false
   } else {
     // 播放到末尾后再次播放回到起点
-    if (currentMs(svg) >= duration) svg.setCurrentTime(0)
-    svg.unpauseAnimations()
+    if (clock.now() >= duration) clock.seek(0)
+    clock.play()
     playing = true
     requestAnimationFrame(tick)
   }
   updatePlayIcon()
-}
-
-/** 动画总时长（ms），从 SMIL 动画的 dur 属性读取，如 "7872ms" */
-function readDuration(): number {
-  const dur = canvas.querySelector('animateTransform')?.getAttribute('dur')
-  const ms = dur ? parseFloat(dur) : NaN
-  return Number.isFinite(ms) ? ms : 0
 }
 
 function formatBytes(bytes: number): string {
@@ -158,19 +197,21 @@ async function generate() {
     const svgText = await gensvg(await readOptions(data))
     renderStats(svgText, performance.now() - startedAt)
     canvas.innerHTML = svgText
-    duration = readDuration()
+    // 时长从时钟读：CSS 引擎取动画对象实际 timing，自定义 animation 写死时长时依然准确
+    clock = buildClock()
+    duration = clock?.totalDuration() ?? 0
     progress.max = String(duration)
     playBtn.disabled = false
     progress.disabled = false
-    // SMIL 动画随元素挂载自动开始，这里停在首帧，等用户主动播放
-    const svg = getSvg()
-    svg?.pauseAnimations()
-    svg?.setCurrentTime(0)
+    // 动画随元素挂载自动开始，停在首帧等用户主动播放
+    clock?.pause()
+    clock?.seek(0)
     renderProgress(0)
   } catch (err) {
     // 错误对象带堆栈，控制台能定位到具体是字体、网络还是物理模拟出的问题
     console.error('[github-gravity] 生成失败：', err)
     statsLabel.hidden = true
+    clock = null
     canvas.innerHTML = ''
     const error = document.createElement('p')
     error.className = 'error'
@@ -192,7 +233,7 @@ playBtn.addEventListener('click', togglePlay)
 progress.addEventListener('input', () => {
   // 拖动进度条是在手动定位，暂停正在进行的播放
   if (playing) {
-    getSvg()?.pauseAnimations()
+    clock?.pause()
     playing = false
     updatePlayIcon()
   }

@@ -73,6 +73,22 @@ inputs:
       divided by it.
     required: false
     default: '3'
+  css:
+    description: >-
+      Use the CSS animation engine (a self-contained style block with @keyframes,
+      animations bound via data-date selectors) instead of SMIL animateTransform.
+      Both stay a single static SVG file; CSS plays more reliably in environments
+      with poor SMIL support, and stays visually identical. Default: false.
+    required: false
+    default: 'false'
+  animation:
+    description: >-
+      Custom CSS animation value applied to every block. Only effective with css: true.
+      Default: var(--n) var(--dur) linear both. Available variables: --n is the
+      block's keyframes name, --dur is the playback duration. Modify with caution:
+      a wrong value breaks the animation effect. Must not contain braces,
+      semicolons or "]]>".
+    required: false
   width:
     description: >-
       Width of the physics world. Change with caution: the horizontal block layout, the text

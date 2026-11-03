@@ -276,15 +276,15 @@ export function simplifyTrajectory(
 }
 
 /**
- * 将简化轨迹的 span 转为 SMIL animateTransform 的 keyTimes 属性值：
- * 各关键帧时刻 = span 前缀和占总和的比例，首帧恒为 0、末帧恒为 1。
- * 轨迹未携带 span（未启用压缩）时返回 null，消费端回退到 SMIL 默认均分时间。
+ * 将简化轨迹的 span 归一化为关键帧时刻数组：各时刻 = span 前缀和占总和的比例，
+ * 首帧恒为 0、末帧恒为 1。未启用压缩（无 span）时返回 null，消费端按各引擎的
+ * 默认均分时间处理。
  */
-export function buildKeyTimes(
+export function buildKeyTimesArray(
   trajectory: {
     span?: number
   }[]
-): string | null {
+): number[] | null {
   if (trajectory.length < 2 || trajectory[0].span === undefined) return null
 
   const total = trajectory.reduce((sum, p) => sum + (p.span ?? 0), 0)
@@ -292,13 +292,18 @@ export function buildKeyTimes(
   let acc = 0
   for (const p of trajectory.slice(1)) {
     acc += p.span ?? 0
-    // SMIL 要求 keyTimes 严格递增：归一化后夹到 [prev + 1e-6, 0.999999]，
-    // 避免极长轨迹下小数舍入把相邻值舍成相同
+    // 严格递增：相邻至少差 1e-6，避免长轨迹舍入后相邻值相同
     const prev = keyTimes[keyTimes.length - 1]
     const t = +(acc / total).toFixed(6)
     keyTimes.push(Math.min(Math.max(t, prev + 1e-6), 0.999999))
   }
   // 末帧强制为 1，消除累计浮点误差
   keyTimes[keyTimes.length - 1] = 1
-  return keyTimes.join(';')
+  return keyTimes
+}
+
+/** 将关键帧时刻数组序列化为 SMIL animateTransform 的 keyTimes 属性值 */
+export function buildKeyTimes(trajectory: { span?: number }[]): string | null {
+  const keyTimes = buildKeyTimesArray(trajectory)
+  return keyTimes ? keyTimes.join(';') : null
 }
