@@ -30,7 +30,7 @@ jobs:
       - name: Bundle
         run: npm run bundle
 
-      - uses: flycran/github-gravity@v3
+      - uses: ./
         with:
           username: "Orta"
           text: "Github Gravity"
