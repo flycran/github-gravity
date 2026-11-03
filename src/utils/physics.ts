@@ -243,7 +243,7 @@ export interface SimulationOptions {
    * RDP（时空版 Ramer-Douglas-Peucker，最快，关键帧略多）
    */
   compressionAlgorithm?: 'Greedy' | 'DP' | 'RDP'
-  /** 贡献方块的形状：circle（圆形）或 square（方形）。圆形物理模拟更丝滑，不容易穿模。 */
+  /** 贡献方块的形状：circle（圆形）或 square（方形） */
   shape?: 'circle' | 'square'
   /**
    * 物理世界宽度，默认 300。
@@ -370,7 +370,6 @@ export async function createSimulationWorld(
       if (contributionDay.count) {
         const x = left + (interval + size) * rowIndex
         const y = top + (interval + size) * dayOfWeek
-        // 动态刚体：圆形物理模拟更丝滑，不容易穿模
         const colliderDesc = (
           shape === 'square'
             ? ColliderDesc.cuboid(size / 2, size / 2)
