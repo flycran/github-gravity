@@ -30,14 +30,18 @@ jobs:
       - name: Bundle
         run: npm run bundle
 
-      - name: Generate Gravity SVG
-        uses: ./
+      - uses: flycran/github-gravity@v3
         with:
-          username: Orta
-          text: Github gravity
-          font-size: 42
-          text-color: '#eb510a'
-          output-path: deploy/gravity.svg
+          username: "Orta"
+          text: "Github Gravity"
+          shape: "square"
+          text-color: "#eb510a"
+          css: true
+          max-simulation-time: 10
+          font-size: 32
+          text-top: 56
+          friction: 0.1
+          restitution: 0.3
 
       - name: Deploy to output branch
         uses: peaceiris/actions-gh-pages@v4
