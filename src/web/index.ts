@@ -18,6 +18,8 @@ const clearFontBtn = document.getElementById('clear-font') as HTMLButtonElement
 const copyActionBtn = document.getElementById(
   'copy-action'
 ) as HTMLButtonElement
+const copyIcon = document.getElementById('copy-icon') as SVGElement
+const copyCheck = document.getElementById('copy-check') as SVGElement
 
 /** 当前动画总时长（ms），由模拟结果决定 */
 let duration = 0
@@ -175,10 +177,12 @@ function buildActionSnippet(options: GensvgOptions): string {
 copyActionBtn.addEventListener('click', async () => {
   const snippet = buildActionSnippet(await readOptions(new FormData(form)))
   await navigator.clipboard.writeText(snippet)
-  // 点击反馈：短暂提示已复制后复原按钮文字
-  copyActionBtn.textContent = '已复制 ✓'
+  // 点击反馈：复制图标短暂切换为对勾后复原
+  copyIcon.toggleAttribute('hidden', true)
+  copyCheck.toggleAttribute('hidden', false)
   setTimeout(() => {
-    copyActionBtn.textContent = '复制 Action 配置 / Copy action usage'
+    copyIcon.toggleAttribute('hidden', false)
+    copyCheck.toggleAttribute('hidden', true)
   }, 1500)
 })
 
