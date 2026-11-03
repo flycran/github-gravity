@@ -14,6 +14,9 @@ const fontInput = document.getElementById('font') as HTMLInputElement
 const fontLabel = document.getElementById('font-label') as HTMLSpanElement
 const fontUrlInput = document.getElementById('font-url') as HTMLInputElement
 const clearFontBtn = document.getElementById('clear-font') as HTMLButtonElement
+const copyActionBtn = document.getElementById(
+  'copy-action'
+) as HTMLButtonElement
 
 /** 当前动画总时长（ms），由模拟结果决定 */
 let duration = 0
@@ -120,6 +123,56 @@ async function readOptions(data: FormData): Promise<GensvgOptions> {
 function getSvg(): SVGSVGElement | null {
   return canvas.querySelector('svg')
 }
+
+/** 表单选项 → Action input 名；disableCompression 无对应输入故不在表中 */
+const ACTION_INPUT_NAMES: Partial<Record<keyof GensvgOptions, string>> = {
+  username: 'username',
+  text: 'text',
+  shape: 'shape',
+  backgroundColor: 'background-color',
+  textColor: 'text-color',
+  css: 'css',
+  animation: 'animation',
+  maxSimulationTime: 'max-simulation-time',
+  compressionTolerance: 'compression-tolerance',
+  compressionAlgorithm: 'compression-algorithm',
+  fontSize: 'font-size',
+  textTop: 'text-top',
+  friction: 'friction',
+  restitution: 'restitution',
+  scale: 'scale',
+  speed: 'speed',
+  font: 'font-path'
+}
+
+/**
+ * 把表单配置生成为 Action 用法 YAML 片段。
+ * 字符串值统一走 JSON 风格双引号，含特殊字符也合法；
+ * 上传的字体文件带不进 workflow，只有字体 URL 会映射为 font-path
+ */
+function buildActionSnippet(options: GensvgOptions): string {
+  const lines = ['- uses: flycran/github-gravity@v3', '  with:']
+  for (const [key, input] of Object.entries(ACTION_INPUT_NAMES)) {
+    const value = options[key as keyof GensvgOptions]
+    // 未填写的字段靠 Action 默认值，false 与默认一致，都省略
+    if (value === undefined || value === '' || value === false) continue
+    if (key === 'font' && typeof value !== 'string') continue
+    lines.push(
+      `    ${input}: ${typeof value === 'string' ? JSON.stringify(value) : value}`
+    )
+  }
+  return lines.join('\n')
+}
+
+copyActionBtn.addEventListener('click', async () => {
+  const snippet = buildActionSnippet(await readOptions(new FormData(form)))
+  await navigator.clipboard.writeText(snippet)
+  // 点击反馈：短暂提示已复制后复原按钮文字
+  copyActionBtn.textContent = '已复制 ✓'
+  setTimeout(() => {
+    copyActionBtn.textContent = '复制 Action 配置 / Copy action usage'
+  }, 1500)
+})
 
 function updatePlayIcon() {
   iconPlay.toggleAttribute('hidden', playing)

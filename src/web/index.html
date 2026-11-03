@@ -170,6 +170,18 @@
       cursor: pointer;
     }
 
+    #copy-action {
+      width: 100%;
+      margin-bottom: 6px;
+      padding: 6px 18px;
+      border: 1px solid #d0d7de;
+      border-radius: 4px;
+      background-color: transparent;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+    }
+
     #generate:disabled {
       opacity: 0.6;
       cursor: default;
@@ -435,6 +447,9 @@
           </div>
         </details>
       </div>
+      <button id="copy-action" type="button">
+        复制 Action 配置 / Copy action usage
+      </button>
       <button id="generate" type="submit">生成</button>
     </form>
 
