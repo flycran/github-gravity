@@ -23,7 +23,10 @@ const BUNDLED_FONT_HREF = '../public/LiberationSerif-Bold.ttf'
 export const DEFAULT_FONT = new URL(BUNDLED_FONT_HREF, import.meta.url)
 
 export const DEFAULT_OPTIONS: Required<
-  Omit<GensvgOptions, 'username' | 'text' | 'maxSimulationTime'>
+  Omit<
+    GensvgOptions,
+    'username' | 'text' | 'maxSimulationTime' | 'calendarList'
+  >
 > = {
   width: 300,
   height: 150,

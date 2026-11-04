@@ -114,6 +114,33 @@ describe('full pipeline integration', () => {
     ).rejects.toThrow('Failed to fetch contributions')
   })
 
+  it('skips fetchContributions when calendarList is provided', async () => {
+    mockFetchContributions.mockImplementation(async () => {
+      throw new Error('fetchContributions should not be called')
+    })
+
+    const calendarList = {
+      total: 11,
+      contributions: [
+        [
+          { date: '2026-07-19', intensity: 1, count: 1 },
+          { date: '2026-07-20', intensity: 0, count: 0 },
+          { date: '2026-07-21', intensity: 3, count: 10 }
+        ]
+      ]
+    }
+    const svg = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40,
+      calendarList
+    })
+
+    // 数据完全来自 calendarList：count 非零的天数即方块数
+    expect(svg.match(/<circle/g)?.length).toBe(2)
+    expect(mockFetchContributions).not.toHaveBeenCalled()
+  })
+
   it('produces deterministic SVG for same inputs', async () => {
     const svg1 = await gensvg({
       username: 'testuser',
