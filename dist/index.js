@@ -46096,10 +46096,14 @@ function describeFont(font) {
 /**
  * 通道化轨迹压缩。
  *
- * 轨迹由独立通道组成：位置通道（x、y 共享时间轴）与自转角通道，每个通道
- * 按自己的容差独立分段——旋转恒定时旋转通道收缩为两个关键帧，位置通道
- * 不受影响；旋转剧变时也只有旋转通道加密。各通道时间轴互不相同，消费端
- * 按各自的 span 还原节奏。
+ * 轨迹由独立标量通道组成：x、y 与自转角，每个通道按自己的容差独立分段——
+ * 垂直下落中几乎恒定的 x 通道收缩为两个关键帧并可在消费端折叠为静态值，
+ * 主导运动的 y 通道不受影响；旋转剧变也只有旋转通道加密。各通道时间轴互不
+ * 相同，消费端按各自的 span 还原节奏。
+ *
+ * 另提供联合位置表达（joint）：x、y 共享时间轴、以欧氏偏差为约束。分轴划分
+ * 的折点时刻错开时，联合表达的帧数更少，供只能消费 "x,y" 绑定的引擎（SMIL
+ * translate）使用。
  */
 function assertTolerance(tolerance) {
     if (tolerance < 0) {
@@ -46177,48 +46181,11 @@ function keepByAlgorithm(n, algorithm, feasible, findSplit) {
     }
 }
 /**
- * 位置通道的段可行性：任一中间点的时刻插值偏差平方超限立即返回 false
+ * 通道的段可行性：任一中间点的时刻插值偏差超限立即返回 false
  * （提前终止，长不可行段的开销为常数级）。
- * 度量含时间维：匀速直线段可整体并段，变速段会自动保留关键帧。
+ * 度量含时间维：匀速段可整体并段，变速段会自动保留关键帧。
  */
-function positionFeasible(samples, s, e, limitSq) {
-    const denom = e - s;
-    const ax = samples[s].x;
-    const ay = samples[s].y;
-    const dxs = samples[e].x - ax;
-    const dys = samples[e].y - ay;
-    for (let i = s + 1; i < e; i++) {
-        const t = (i - s) / denom;
-        const dx = samples[i].x - (ax + dxs * t);
-        const dy = samples[i].y - (ay + dys * t);
-        if (dx * dx + dy * dy > limitSq)
-            return false;
-    }
-    return true;
-}
-/** 位置通道的段 (s, e) 内时刻插值偏差平方最大的中间点；段可行返回 -1 */
-function positionSplit(samples, s, e, limitSq) {
-    let maxSq = 0;
-    let maxIdx = -1;
-    const denom = e - s;
-    const ax = samples[s].x;
-    const ay = samples[s].y;
-    const dxs = samples[e].x - ax;
-    const dys = samples[e].y - ay;
-    for (let i = s + 1; i < e; i++) {
-        const t = (i - s) / denom;
-        const dx = samples[i].x - (ax + dxs * t);
-        const dy = samples[i].y - (ay + dys * t);
-        const d = dx * dx + dy * dy;
-        if (d > maxSq) {
-            maxSq = d;
-            maxIdx = i;
-        }
-    }
-    return maxSq > limitSq ? maxIdx : -1;
-}
-/** 标量通道的段可行性：任一中间点的时刻插值偏差超限立即返回 false */
-function scalarFeasible(values, s, e, limit) {
+function channelFeasible(values, s, e, limit) {
     const denom = e - s;
     const a = values[s];
     const span = values[e] - a;
@@ -46229,8 +46196,8 @@ function scalarFeasible(values, s, e, limit) {
     }
     return true;
 }
-/** 标量通道的段 (s, e) 内时刻插值偏差最大的中间点；段可行返回 -1 */
-function scalarSplit(values, s, e, limit) {
+/** 通道的段 (s, e) 内时刻插值偏差最大的中间点；段可行返回 -1 */
+function channelSplit(values, s, e, limit) {
     let max = 0;
     let maxIdx = -1;
     const denom = e - s;
@@ -46246,20 +46213,8 @@ function scalarSplit(values, s, e, limit) {
     }
     return max > limit ? maxIdx : -1;
 }
-/** 把保留标记转为位置关键帧：保序，span 为相邻保留点的原始下标差 */
-function collectPosition(samples, keep) {
-    const result = [];
-    let prevIdx = 0;
-    for (let i = 0; i < keep.length; i++) {
-        if (!keep[i])
-            continue;
-        result.push({ ...samples[i], span: i - prevIdx });
-        prevIdx = i;
-    }
-    return result;
-}
-/** 把保留标记转为标量关键帧：保序，span 为相邻保留点的原始下标差 */
-function collectScalar(values, keep) {
+/** 把保留标记转为关键帧：保序，span 为相邻保留点的原始下标差 */
+function collectFrames(values, keep) {
     const result = [];
     let prevIdx = 0;
     for (let i = 0; i < keep.length; i++) {
@@ -46271,55 +46226,232 @@ function collectScalar(values, keep) {
     return result;
 }
 /**
- * 位置通道压缩：在"每个原始采样时刻的插值位置偏差都不超过 tolerance"的
+ * 标量通道压缩：在"每个原始采样时刻的插值值偏差都不超过 tolerance"的
  * 约束下按所选算法分段。
  *
  * 保证：首尾点必保留、输出保序；span >= 1（首点为 0）且总和等于原始采样数 - 1
  */
-function simplifyPositions(samples, tolerance, algorithm) {
+function simplifyChannel(frames, tolerance, algorithm) {
     assertTolerance(tolerance);
-    const n = samples.length;
+    const n = frames.length;
     if (n === 0)
         return [];
     if (n === 1)
-        return [{ ...samples[0], span: 0 }];
-    const limitSq = tolerance * tolerance;
-    const keep = keepByAlgorithm(n, algorithm, (s, e) => positionFeasible(samples, s, e, limitSq), (s, e) => positionSplit(samples, s, e, limitSq));
-    return collectPosition(samples, keep);
+        return [{ value: frames[0].value, span: 0 }];
+    const values = frames.map((f) => f.value);
+    const keep = keepByAlgorithm(n, algorithm, (s, e) => channelFeasible(values, s, e, tolerance), (s, e) => channelSplit(values, s, e, tolerance));
+    return collectFrames(values, keep);
+}
+/** 联合位置的段可行性：任一中间点的时刻插值欧氏偏差超限立即返回 false */
+function positionFeasible(points, s, e, limitSq) {
+    const denom = e - s;
+    const ax = points[s].x;
+    const ay = points[s].y;
+    const dxs = points[e].x - ax;
+    const dys = points[e].y - ay;
+    for (let i = s + 1; i < e; i++) {
+        const t = (i - s) / denom;
+        const dx = points[i].x - (ax + dxs * t);
+        const dy = points[i].y - (ay + dys * t);
+        if (dx * dx + dy * dy > limitSq)
+            return false;
+    }
+    return true;
+}
+/** 联合位置的段 (s, e) 内时刻插值偏差平方最大的中间点；段可行返回 -1 */
+function positionSplit(points, s, e, limitSq) {
+    let maxSq = 0;
+    let maxIdx = -1;
+    const denom = e - s;
+    const ax = points[s].x;
+    const ay = points[s].y;
+    const dxs = points[e].x - ax;
+    const dys = points[e].y - ay;
+    for (let i = s + 1; i < e; i++) {
+        const t = (i - s) / denom;
+        const dx = points[i].x - (ax + dxs * t);
+        const dy = points[i].y - (ay + dys * t);
+        const d = dx * dx + dy * dy;
+        if (d > maxSq) {
+            maxSq = d;
+            maxIdx = i;
+        }
+    }
+    return maxSq > limitSq ? maxIdx : -1;
 }
 /**
- * 标量通道压缩：约束与保证同 simplifyPositions，度量换成单值插值偏差。
- * 用于自转角等按弧度直接线性插值的通道
+ * 联合位置压缩：x、y 共享关键帧，约束为合成位置的时刻插值偏差
+ * （欧氏距离）不超过 tolerance。帧数比两个分轴通道的并集更少——
+ * 一个关键帧同时承载两轴，单轴的小折点可被另一轴的容差预算吸收。
  */
-function simplifyRotations(values, tolerance, algorithm) {
+function simplifyPositions(points, tolerance, algorithm) {
     assertTolerance(tolerance);
-    const n = values.length;
+    const n = points.length;
     if (n === 0)
         return [];
     if (n === 1)
-        return [{ value: values[0], span: 0 }];
-    const keep = keepByAlgorithm(n, algorithm, (s, e) => scalarFeasible(values, s, e, tolerance), (s, e) => scalarSplit(values, s, e, tolerance));
-    return collectScalar(values, keep);
+        return [{ x: points[0].x, y: points[0].y, span: 0 }];
+    const limitSq = tolerance * tolerance;
+    const keep = keepByAlgorithm(n, algorithm, (s, e) => positionFeasible(points, s, e, limitSq), (s, e) => positionSplit(points, s, e, limitSq));
+    const result = [];
+    let prevIdx = 0;
+    for (let i = 0; i < keep.length; i++) {
+        if (!keep[i])
+            continue;
+        result.push({ x: points[i].x, y: points[i].y, span: i - prevIdx });
+        prevIdx = i;
+    }
+    return result;
 }
 /**
- * 通道化轨迹压缩入口：位置与自转各自独立分段，互不拖累。
+ * 通道化轨迹压缩入口：x、y 与自转各自独立分段，互不拖累。
+ * tolerance 为单轴容差：两轴各自与真实坐标的插值偏差都不超过它
+ * （合成位移上界为其 √2 倍）。
  *
  * @param trajectory 原始轨迹（无 span），重复压缩不支持
- * @param tolerance 位置容差，任意线性度量单位
+ * @param tolerance 单轴位置容差，物理坐标单位
  * @param maxRotationError 自转角插值误差上限（弧度）；0 为不压缩旋转通道，
  *   全量保留并按帧序均分时间
  * @param algorithm 分段算法。默认 Greedy：真实轨迹上关键帧数仅比全局最优
  *   （DP）多 1~3%，耗时低一个数量级；追求极致体积可改用 DP
+ * @param withJoint 同时产出联合位置表达（欧氏容差），供 SMIL 这类只能
+ *   消费绑定 "x,y" 的引擎使用；拆分通道折点错开时联合帧数更少
  */
-function compressTrajectory(trajectory, tolerance, maxRotationError, algorithm = 'Greedy') {
+function compressTrajectory(trajectory, tolerance, maxRotationError, algorithm = 'Greedy', withJoint = false) {
     const rotation = trajectory.rotation;
-    return {
-        position: simplifyPositions(trajectory.position, tolerance, algorithm),
+    const result = {
+        x: simplifyChannel(trajectory.x, tolerance, algorithm),
+        y: simplifyChannel(trajectory.y, tolerance, algorithm),
         rotation: rotation && rotation.length > 0
             ? maxRotationError > 0
-                ? simplifyRotations(rotation.map((r) => r.value), maxRotationError, algorithm)
+                ? simplifyChannel(rotation, maxRotationError, algorithm)
                 : rotation.map((r) => ({ value: r.value }))
             : undefined
+    };
+    if (withJoint) {
+        // 联合压缩的输入是原始采样：x、y 通道按同一时刻对齐，逐下标配对即可
+        result.joint = simplifyPositions(trajectory.x.map((f, i) => ({ x: f.value, y: trajectory.y[i].value })), tolerance, algorithm);
+    }
+    return result;
+}
+/** 通道各关键帧的归一化时刻（span 前缀和 / 总采样间隔）；未压缩为均分 */
+function channelTimeline(frames) {
+    const n = frames.length;
+    if (frames[0].span === undefined) {
+        return Array.from({ length: n }, (_, i) => (n === 1 ? 0 : i / (n - 1)));
+    }
+    const total = frames.reduce((sum, f) => sum + (f.span ?? 0), 0);
+    // frames[k].span 是帧 k 与前一帧的间隔，先累加再取时刻（首帧恒为 0）
+    const times = [0];
+    let acc = 0;
+    for (const f of frames.slice(1)) {
+        acc += f.span ?? 0;
+        times.push(acc / total);
+    }
+    return times;
+}
+/** 时刻 t 处通道的线性插值值；timeline 为 channelTimeline 的产出 */
+function sampleChannel(frames, timeline, t) {
+    // k 定位 t 所属的段 [timeline[k], timeline[k + 1]]
+    let k = 0;
+    while (k + 2 < frames.length && timeline[k + 1] <= t)
+        k++;
+    const span = timeline[k + 1] - timeline[k];
+    const frac = span === 0 ? 0 : (t - timeline[k]) / span;
+    return frames[k].value + (frames[k + 1].value - frames[k].value) * frac;
+}
+/** 时刻序列化为严格递增的 keyTimes：首帧 0、末帧 1，舍入后相邻防碰撞 */
+function normalizeKeyTimes(times) {
+    const keyTimes = [0];
+    for (const t of times.slice(1, -1)) {
+        // 严格递增：相邻至少差 1e-6，避免长轨迹舍入后相邻值相同
+        const prev = keyTimes[keyTimes.length - 1];
+        keyTimes.push(Math.min(Math.max(+t.toFixed(6), prev + 1e-6), 0.999999));
+    }
+    // 末帧强制为 1，消除累计浮点误差
+    keyTimes.push(1);
+    return keyTimes;
+}
+/** 并集重采样点的无损合并阈值（物理单位），吸收插值的浮点舍入 */
+const MERGE_EPSILON = 1e-9;
+/**
+ * 并集帧中两轴都匀速共线的中间点可以无损丢弃：并集相邻时刻之间两轴
+ * 都线性，丢弃后插值在任意时刻的值不变。抵消并集引入的冗余帧——
+ * x 与 y 的折点时刻不同时，并集会把这些点两两互插一遍。
+ */
+function compactUnion(points, times) {
+    const n = points.length;
+    if (n < 3)
+        return { points, times };
+    const keptPoints = [points[0]];
+    const keptTimes = [times[0]];
+    let s = 0;
+    while (s < n - 1) {
+        // 逐步扩展段尾：整段内所有中间点都在首尾连线上则整段可合并
+        let e = s + 1;
+        while (e < n - 1) {
+            const next = e + 1;
+            const span = times[next] - times[s];
+            let mergeable = true;
+            for (let i = s + 1; i <= e; i++) {
+                const t = span === 0 ? 0 : (times[i] - times[s]) / span;
+                const px = points[s].x + (points[next].x - points[s].x) * t;
+                const py = points[s].y + (points[next].y - points[s].y) * t;
+                if (Math.abs(points[i].x - px) > MERGE_EPSILON ||
+                    Math.abs(points[i].y - py) > MERGE_EPSILON) {
+                    mergeable = false;
+                    break;
+                }
+            }
+            if (!mergeable)
+                break;
+            e = next;
+        }
+        keptPoints.push(points[e]);
+        keptTimes.push(times[e]);
+        s = e;
+    }
+    return { points: keptPoints, times: keptTimes };
+}
+/**
+ * 把拆分的 x/y 通道重联合为 translate 消费的帧序列。
+ *
+ * 时刻取两通道关键帧时间轴的并集：并集相邻点之间两轴都线性，合成轨迹
+ * 仍是精确的匀速直线段，每个并集时刻两轴都精确命中各自通道的插值值，
+ * 因此联合表达与拆分表达视觉无损等价。并集中两轴都共线匀速的冗余点
+ * 会被无损合并掉。供不支持单轴插值的消费端（SMIL translate 的 values
+ * 是绑定的 "x,y" 对）使用。
+ */
+function mergePositionChannels(x, y) {
+    const uniform = x[0].span === undefined && y[0].span === undefined;
+    if (uniform) {
+        // 未压缩：两通道帧数相同且均分，逐帧配对即精确值
+        const n = Math.min(x.length, y.length);
+        return {
+            points: Array.from({ length: n }, (_, i) => ({
+                x: x[i].value,
+                y: y[i].value
+            })),
+            keyTimes: null
+        };
+    }
+    const xTimes = channelTimeline(x);
+    const yTimes = channelTimeline(y);
+    // 两通道的同一原始时刻数值精确相等（同一 span 前缀和算式），Set 去重即可
+    const times = [...new Set([...xTimes, ...yTimes])].sort((a, b) => a - b);
+    if (times.length < 2) {
+        return { points: [{ x: x[0].value, y: y[0].value }], keyTimes: null };
+    }
+    const merged = compactUnion(times.map((t) => ({
+        x: sampleChannel(x, xTimes, t),
+        y: sampleChannel(y, yTimes, t)
+    })), times);
+    if (merged.points.length < 2) {
+        return { points: merged.points, keyTimes: null };
+    }
+    return {
+        points: merged.points,
+        keyTimes: normalizeKeyTimes(merged.times)
     };
 }
 /**
@@ -46330,19 +46462,7 @@ function compressTrajectory(trajectory, tolerance, maxRotationError, algorithm =
 function buildKeyTimesArray(frames) {
     if (frames.length < 2 || frames[0].span === undefined)
         return null;
-    const total = frames.reduce((sum, p) => sum + (p.span ?? 0), 0);
-    const keyTimes = [0];
-    let acc = 0;
-    for (const p of frames.slice(1)) {
-        acc += p.span ?? 0;
-        // 严格递增：相邻至少差 1e-6，避免长轨迹舍入后相邻值相同
-        const prev = keyTimes[keyTimes.length - 1];
-        const t = +(acc / total).toFixed(6);
-        keyTimes.push(Math.min(Math.max(t, prev + 1e-6), 0.999999));
-    }
-    // 末帧强制为 1，消除累计浮点误差
-    keyTimes[keyTimes.length - 1] = 1;
-    return keyTimes;
+    return normalizeKeyTimes(channelTimeline(frames));
 }
 /** 将关键帧时刻数组序列化为 SMIL animateTransform 的 keyTimes 属性值 */
 function buildKeyTimes(frames) {
@@ -46379,7 +46499,7 @@ class Contribution {
     x;
     y;
     color;
-    /** 采样轨迹：位置通道每帧记录，自转角通道仅方形记录 */
+    /** 采样轨迹：x/y 通道每帧记录，自转角通道仅方形记录 */
     trajectory;
     /** 自转角 */
     trackRotation;
@@ -46393,18 +46513,19 @@ class Contribution {
         this.x = pos.x;
         this.y = pos.y;
         this.trajectory = trackRotation
-            ? { position: [], rotation: [] }
-            : { position: [] };
+            ? { x: [], y: [], rotation: [] }
+            : { x: [], y: [] };
         this.recordSample(pos);
     }
     update() {
         this.recordSample(this.collider.translation());
     }
-    /** 记录当前时刻的位姿采样：位置入位置通道，解缠绕后的自转角入旋转通道 */
+    /** 记录当前时刻的位姿采样：坐标入各自通道，解缠绕后的自转角入旋转通道 */
     recordSample(pos) {
         this.x = pos.x;
         this.y = pos.y;
-        this.trajectory.position.push({ x: pos.x, y: pos.y });
+        this.trajectory.x.push({ value: pos.x });
+        this.trajectory.y.push({ value: pos.y });
         if (!this.trackRotation)
             return;
         const rotations = this.trajectory.rotation;
@@ -46416,8 +46537,9 @@ class Contribution {
     }
     /** 移除各通道轨迹末尾 count 个采样 */
     truncateTail(count) {
-        const kept = Math.max(1, this.trajectory.position.length - count);
-        this.trajectory.position.length = kept;
+        const kept = Math.max(1, this.trajectory.x.length - count);
+        this.trajectory.x.length = kept;
+        this.trajectory.y.length = kept;
         if (this.trajectory.rotation) {
             this.trajectory.rotation.length = kept;
         }
@@ -46559,7 +46681,7 @@ async function createSimulationWorld(options) {
  * 开始模拟
  */
 async function startSimulation(options) {
-    const { shape, size, compressionAlgorithm, compressionTolerance, disableCompression, maxSimulationTime, speed } = withDefaults(DEFAULT_OPTIONS, options);
+    const { shape, size, compressionAlgorithm, compressionTolerance, disableCompression, jointPosition, maxSimulationTime, speed } = withDefaults(DEFAULT_OPTIONS, options);
     const { world, contributions, textPaths, offsetX, centerY } = await createSimulationWorld(options);
     // 容差从 SVG 像素换算回物理坐标单位，让压缩函数与渲染缩放解耦；
     const tolerance = compressionTolerance / SCALE;
@@ -46620,7 +46742,7 @@ async function startSimulation(options) {
             return !disableCompression
                 ? {
                     ...json,
-                    trajectory: compressTrajectory(json.trajectory, tolerance, shape === 'square' ? MAX_ROTATION_ERROR : 0, compressionAlgorithm)
+                    trajectory: compressTrajectory(json.trajectory, tolerance, shape === 'square' ? MAX_ROTATION_ERROR : 0, compressionAlgorithm, jointPosition)
                 }
                 : json;
         }),
@@ -46642,7 +46764,9 @@ async function startSimulation(options) {
  */
 async function gensvg(options) {
     const op = withDefaults(DEFAULT_OPTIONS, options);
-    const result = await startSimulation(op);
+    // SMIL 的 translate 只能消费绑定的 "x,y" 对，让模拟一并产出联合位置表达；
+    // CSS 引擎按通道独立播放，无需联合表达
+    const result = await startSimulation({ ...op, jointPosition: !op.css });
     const svgWidth = op.width * SCALE;
     const svgHeight = op.height * SCALE;
     // 生成每个贡献方块的 SVG 元素
@@ -46662,68 +46786,81 @@ async function gensvg(options) {
             ? `<circle r="${(op.size / 2) * SCALE}" fill="${contribution.color}"/>`
             : `<rect x="${-(op.size / 2) * SCALE}" y="${-(op.size / 2) * SCALE}" width="${op.size * SCALE}" height="${op.size * SCALE}" fill="${contribution.color}"/>`;
         if (op.css) {
-            const positions = contribution.trajectory.position;
-            const rotations = contribution.trajectory.rotation;
-            // 位置帧节奏：压缩轨迹按 span 前缀和换算（5 位小数避免相邻帧舍入碰撞），
-            // 未压缩时为均匀分布
-            const times = buildKeyTimesArray(positions);
-            const fractions = times ??
-                Array.from({ length: positions.length }, (_, i) => i / Math.max(positions.length - 1, 1));
-            const offsets = fractions.map((t) => `${+(t * 100).toFixed(5)}%`);
-            // 自转恒定时折叠为静态变量：无动画帧、无插值，播放端零开销
-            const constantDeg = rotations &&
-                rotations.length <= 2 &&
-                rotations.every((r) => r.value === rotations[0].value)
-                ? toSvgDeg(rotations[0].value)
-                : null;
-            const binding = [`--n:g${index}`];
-            let frames = positions
-                .map((p, i) => `${offsets[i]}{--x:${toSvgX(p.x)}px;--y:${toSvgY(p.y)}px}`)
-                .join('');
-            if (constantDeg !== null) {
-                binding.push(`--r:${constantDeg}deg`);
-            }
-            else if (rotations &&
-                rotations.length === positions.length &&
-                rotations[0].span === undefined) {
-                // 未压缩旋转与位置同帧同节奏：并入同一 keyframes，省一套动画开销
-                frames = positions
-                    .map((p, i) => `${offsets[i]}{--x:${toSvgX(p.x)}px;--y:${toSvgY(p.y)}px;--r:${toSvgDeg(rotations[i].value)}deg}`)
-                    .join('');
-            }
-            else if (rotations) {
-                // 压缩旋转走独立时间轴：单独 keyframes 挂到第二个动画名上，
-                // 帧数与节奏都不再随位置通道牵制
-                const rotFractions = buildKeyTimesArray(rotations) ??
-                    Array.from({ length: rotations.length }, (_, i) => i / Math.max(rotations.length - 1, 1));
-                const rotOffsets = rotFractions.map((t) => `${+(t * 100).toFixed(5)}%`);
-                keyframesRules.push(`@keyframes g${index}r{${rotations
-                    .map((r, i) => `${rotOffsets[i]}{--r:${toSvgDeg(r.value)}deg}`)
+            const { x, y, rotation } = contribution.trajectory;
+            // 每个通道独立成动画：活跃通道生成自己的 keyframes，恒定通道折叠为
+            // 静态变量并把动画名置为 none——置 none 而非不绑定，是因为未定义的
+            // var() 会让浏览器判定整条 animation 声明无效，冻结其余通道的动画
+            const channels = [
+                {
+                    frames: x,
+                    suffix: 'x',
+                    animVar: 'nx',
+                    cssVar: '--x',
+                    fmt: (v) => `${toSvgX(v)}px`
+                },
+                {
+                    frames: y,
+                    suffix: 'y',
+                    animVar: 'ny',
+                    cssVar: '--y',
+                    fmt: (v) => `${toSvgY(v)}px`
+                },
+                ...(rotation
+                    ? [
+                        {
+                            frames: rotation,
+                            suffix: 'r',
+                            animVar: 'nr',
+                            cssVar: '--r',
+                            fmt: (v) => `${toSvgDeg(v)}deg`
+                        }
+                    ]
+                    : [])
+            ];
+            const binding = [];
+            for (const ch of channels) {
+                const name = `g${index}${ch.suffix}`;
+                const constant = ch.frames.every((f) => f.value === ch.frames[0].value);
+                if (constant) {
+                    binding.push(`--${ch.animVar}:none`, `${ch.cssVar}:${ch.fmt(ch.frames[0].value)}`);
+                    continue;
+                }
+                // 帧节奏：压缩轨迹按 span 前缀和换算（5 位小数避免相邻帧舍入碰撞），
+                // 未压缩时为均匀分布
+                const times = buildKeyTimesArray(ch.frames);
+                const fractions = times ??
+                    Array.from({ length: ch.frames.length }, (_, i) => i / Math.max(ch.frames.length - 1, 1));
+                const offsets = fractions.map((t) => `${+(t * 100).toFixed(5)}%`);
+                keyframesRules.push(`@keyframes ${name}{${ch.frames
+                    .map((f, i) => `${offsets[i]}{${ch.cssVar}:${ch.fmt(f.value)}}`)
                     .join('')}}`);
-                binding.push(`--nr:g${index}r`);
+                binding.push(`--${ch.animVar}:${name}`);
             }
-            keyframesRules.push(`@keyframes g${index}{${frames}}`);
             bindingRules.push(`[data-g${index}]{${binding.join(';')}}`);
             return `\
 <g data-g${index}="">\
 ${shapeElement}\
 </g>`;
         }
-        const positions = contribution.trajectory.position;
-        const rotations = contribution.trajectory.rotation;
-        const values = positions
-            .map(({ x, y }) => `${toSvgX(x)},${toSvgY(y)}`)
+        const { x, y, rotation, joint } = contribution.trajectory;
+        // translate 帧优先用联合位置压缩的结果（帧数最少）；调试或未启用
+        // 联合压缩时退回 x/y 通道的时间轴并集重采样，视觉等价
+        const merged = joint
+            ? { points: joint, keyTimes: buildKeyTimesArray(joint) }
+            : mergePositionChannels(x, y);
+        const values = merged.points
+            .map((p) => `${toSvgX(p.x)},${toSvgY(p.y)}`)
             .join(';');
-        // 开启压缩后各段时间跨度不同，需要 keyTimes 还原真实节奏；未压缩时为 null，走 SMIL 默认均分
-        const keyTimes = buildKeyTimes(positions);
-        const keyTimesAttr = keyTimes ? ` keyTimes="${keyTimes}"` : '';
+        const keyTimesAttr = merged.keyTimes
+            ? ` keyTimes="${merged.keyTimes.join(';')}"`
+            : '';
         // 自转通道按自身 span 换算 keyTimes，与平移动画的时间轴互不牵制
         let rotateAnim = '';
-        if (rotations) {
-            const rotKeyTimes = buildKeyTimes(rotations);
+        if (rotation) {
+            const rotKeyTimes = buildKeyTimes(rotation);
             const rotKeyTimesAttr = rotKeyTimes ? ` keyTimes="${rotKeyTimes}"` : '';
             rotateAnim = `\
-<animateTransform attributeName="transform" attributeType="XML" type="rotate" additive="sum" values="${rotations
+<animateTransform attributeName="transform" attributeType="XML" type="rotate" additive="sum" values="${rotation
                 .map((r) => toSvgDeg(r.value))
                 .join(';')}"${rotKeyTimesAttr} dur="${dur}" fill="freeze"/>`;
         }
@@ -46744,11 +46881,14 @@ ${rotateAnim}\
             : [`@property --r{syntax:"<angle>";inherits:false;initial-value:0deg}`])
     ].join('');
     const cssRotateTemplate = isCircle ? '' : ' rotate(var(--r))';
-    // 方形公共动画追加自转动画项；自转并入位置 keyframes 或已折叠为静态时
-    // --nr 悬空，浏览器忽略无 keyframes 的动画项，不影响其余动画
-    const cssAnimation = isCircle
-        ? op.animation
-        : `${op.animation},var(--nr) var(--dur) linear both`;
+    // 公共动画逐通道声明：用户模板里的 var(--n) 按通道替换为对应动画名变量，
+    // 每个方块的绑定规则保证变量总有值（恒定通道为 none，动画项安全关闭）
+    const channelAnim = (v) => op.animation.replaceAll('var(--n)', `var(--${v})`);
+    const cssAnimation = [
+        channelAnim('nx'),
+        channelAnim('ny'),
+        ...(isCircle ? [] : [channelAnim('nr')])
+    ].join(',');
     // animation 值拼进 CDATA 内的规则体，花括号、分号或 CDATA 结束符都会提前
     // 退出声明作用域、撕碎整个 style 块
     if (op.css && (/[{};]/.test(op.animation) || op.animation.includes(']]>'))) {
