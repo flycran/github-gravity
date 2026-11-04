@@ -51,8 +51,9 @@ function smilClock(svg: SVGSVGElement): AnimationClock {
 }
 
 function cssClock(container: SVGSVGElement): AnimationClock {
-  // 依赖 getAnimations 调用时 flush 样式的规范行为：innerHTML 插入后同步即可取到全部动画
-  const animations = [...container.querySelectorAll('#b>g')].flatMap((g) =>
+  // 依赖 getAnimations 调用时 flush 样式的规范行为：innerHTML 插入后同步即可取到全部动画；
+  // 选择器与 gensvg 的公共动画规则一致（#b 的直接子元素即方块）
+  const animations = [...container.querySelectorAll('#b>*')].flatMap((g) =>
     g.getAnimations()
   )
   return {

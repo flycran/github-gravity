@@ -322,6 +322,44 @@ describe('css animation engine', () => {
     expect(svg).not.toContain('animateTransform')
   })
 
+  it('moves block geometry and fill into shared style rules', async () => {
+    const circleSvg = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40,
+      css: true
+    })
+
+    // 方块只携带「颜色 + 动画名」class，fill、几何与动画绑定全由公共规则提供
+    expect(circleSvg).toContain('<circle class="f0 g0"/>')
+    expect(circleSvg).not.toContain('fill="#')
+    expect(circleSvg).not.toContain('data-g')
+    expect(circleSvg).toContain('#b>circle{r:2px}')
+    expect(circleSvg).toContain('.g0{--n:g0}')
+    // 每种颜色一条规则：规则数与唯一 class 数一致
+    const fillClasses = [
+      ...new Set(
+        [...circleSvg.matchAll(/class="(f\d+) g\d+"/g)].map((m) => m[1])
+      )
+    ]
+    expect(fillClasses.length).toBeGreaterThan(0)
+    for (const cls of fillClasses) {
+      expect(circleSvg).toContain(`.${cls}{fill:#`)
+    }
+    expect(circleSvg.match(/\.f\d+\{fill:/g)?.length).toBe(fillClasses.length)
+
+    const rectSvg = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40,
+      css: true,
+      shape: 'square'
+    })
+
+    expect(rectSvg).toContain('<rect class="f0 g0"/>')
+    expect(rectSvg).toContain('#b>rect{x:-2px;y:-2px;width:4px;height:4px}')
+  })
+
   it('applies a custom animation value', async () => {
     const svg = await gensvg({
       username: 'testuser',
