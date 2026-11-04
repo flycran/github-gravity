@@ -27,21 +27,6 @@ function getAlgorithm(name: string): 'Greedy' | 'DP' | 'RDP' | undefined {
 /**
  * GitHub Action 入口：生成 GitHub 贡献图重力跌落动画 SVG。
  *
- * 输入参数：
- * - username: GitHub 用户名（必填）
- * - text: 显示的文字，默认为 username
- * - output-path: SVG 输出路径，默认为 gravity.svg
- * - font-size: 文字大小，默认为 48
- * - compression-tolerance: 轨迹压缩容差（SVG 像素），默认为 0.5
- * - compression-algorithm: 轨迹压缩算法（Greedy / DP / RDP），默认为 Greedy
- * - max-simulation-time: 最大模拟时间（秒，按播放时长计，会乘以倍速换算模拟时长），达到后返回已模拟的轨迹；不传则模拟到静止为止
- * - scale: SVG 显示缩放，默认为 3
- * - speed: 播放倍速，默认为 3
- * - css: 启用 CSS @keyframes 动画引擎，默认为 SMIL
- * - animation: 自定义 CSS animation 值（仅 css 引擎有效），默认 var(--n) var(--dur) linear both
- * - width / height / size / interval / font-path: 高级自定义项，改动影响渲染效果
- * - friction / restitution: 贡献方块的摩擦系数与弹性，默认 0.3 / 0
- *
  * 输出：
  * - svg-path: 生成的 SVG 文件路径
  */

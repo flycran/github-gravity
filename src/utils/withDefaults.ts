@@ -1,7 +1,5 @@
 /**
  * 合并默认值与用户选项，跳过值为 undefined 的属性。
- * Object.assign / spread 会用 undefined 覆盖已有值，调用端"未填写"的字段
- * 会抹掉默认值；这里保证键携带 undefined 与键不存在等效，调用端无需逐字段过滤
  */
 export function withDefaults<T extends object, U extends object>(
   defaults: T,

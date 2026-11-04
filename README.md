@@ -41,17 +41,17 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 | `text` | ❌ | `username` value | Text to display as collision obstacles |
 | `output-path` | ❌ | `gravity.svg` | Path to write the generated SVG file |
 | `font-size` | ❌ | `48` | Font size of the collision text |
-| `compression-tolerance` | ❌ | `0.5` | Trajectory compression tolerance in SVG pixels. At every original moment, the animated position stays within this distance of the real one. The default fits most cases; `0` is lossless in both position and timing (see below) |
+| `compression-tolerance` | ❌ | `0.5` | Trajectory compression tolerance in SVG pixels. At every original moment, the animated position stays within this distance of the real one; `0` is lossless in both position and timing (see below) |
 | `compression-algorithm` | ❌ | `Greedy` | Trajectory compression algorithm: `Greedy` (fast), `DP` (smallest SVG), `RDP` (fastest). See below for the trade-offs |
-| `max-simulation-time` | ❌ | - | Maximum simulation time in seconds, counted as playback duration (simulated time = this value × `speed`). When reached, the trajectory simulated so far is returned instead of waiting for every block to settle. Leave empty to simulate until all blocks rest |
+| `max-simulation-time` | ❌ | - | Maximum animation playback duration in seconds. Once reached, blocks freeze where they are instead of waiting for every block to settle. Leave empty to play until all blocks rest |
 | `shape` | ❌ | `circle` | Shape of contribution blocks: `circle` or `square` |
 | `friction` | ❌ | `0.3` | Friction coefficient of the contribution blocks |
-| `restitution` | ❌ | `0` | Restitution (bounciness) of the contribution blocks. Values far from 0 may fling blocks out of the visible area; blocks falling below the world bottom are removed |
+| `restitution` | ❌ | `0` | Restitution (bounciness) of the contribution blocks. Values far from 0 may fling blocks out of the visible area |
 | `text-top` | ❌ | `50` | Distance from the top of the world to the text |
 | `background-color` | ❌ | `transparent` | Background color of the SVG (CSS color value) |
 | `text-color` | ❌ | `black` | Color of the collision text (CSS color value) |
-| `scale` | ❌ | `3` | Display zoom factor: the SVG `width`/`height` are the physics dimensions × scale, while the viewBox keeps the raw physics size |
-| `speed` | ❌ | `3` | Playback speed multiplier: the animation duration is the simulated time ÷ speed |
+| `scale` | ❌ | `3` | Overall zoom applied to the final SVG; does not change the actual size of the physics world |
+| `speed` | ❌ | `3` | Playback speed multiplier: the higher the value, the faster the animation plays |
 | `css` | ❌ | `false` | Use the CSS animation engine instead of SMIL `animateTransform`. See below |
 | `animation` | ❌ | `var(--n) var(--dur) linear both` | Custom CSS `animation` value for the CSS engine. ⚠️ Modify with caution — a wrong value breaks the animation. Requires `css: true` |
 | `width` | ❌ | `300` | Width of the physics world. ⚠️ Affects layout and SVG size |
@@ -62,7 +62,7 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 
 ### Reducing file size
 
-The trajectory is compressed by default: `compression-tolerance` (default `0.5`) merges
+The trajectory is compressed by default: `compression-tolerance` merges
 trajectory points into keyframes so that, at every original moment, the interpolated
 position stays within the given distance (in SVG pixels) of the real one — speed changes
 such as bounces, landings and stops keep their real pace.
@@ -92,8 +92,7 @@ Two output engines are available; both produce a single static SVG file and play
 same trajectory at the same pace:
 
 - **SMIL** (default) drives every block with `<animateTransform>` elements.
-- **CSS** (`css: true`) drops those elements and declares all animations in one
-  self-contained `<style>` block: each block's trajectory becomes a `@keyframes` rule.
+- **CSS** (`css: true`) drives every block with a CSS `animation` declaration.
 
 The rendered animation is identical. Choose CSS when the target environment handles
 SMIL poorly — some sanitizers strip SMIL animation elements, while CSS animation in
@@ -101,7 +100,7 @@ SVG is more widely supported (GitHub READMEs load SVGs via `<img>`, where both w
 The CSS output is slightly larger than SMIL.
 
 With `css: true`, the `animation` input replaces the animation declaration applied to
-every block (default `var(--n) var(--dur) linear both`). Available variables:
+every block. Available variables:
 
 - `--n` — each block's keyframes name, required
 - `--dur` — the playback duration
@@ -116,8 +115,7 @@ Must not contain braces, semicolons or `]]>`.
 size. The contribution blocks are laid out from `size` and `interval`, the text is centered
 with `width`, and the drop height follows `height` — change them together and re-check the
 result rather than tweaking one in isolation. If the simulation fails to settle after your
-changes, set `max-simulation-time` to cap the simulation and still get the trajectory up to
-that point.
+changes, set `max-simulation-time` to cap the animation duration and still get the SVG.
 
 `font-path` swaps the collision font. It accepts a local `.ttf`/`.otf` path or an `http(s)` URL.
 The bundled Liberation Serif Bold is used by default because its contours are clean and
@@ -127,7 +125,6 @@ decompose stably. Custom fonts are not guaranteed to work:
   collision shapes.
 - Some fonts cannot be parsed by opentype.js at all (common ones such as DejaVu fail on their
   GSUB tables).
-- Different font metrics usually require re-tuning `font-size` and `text-top`.
 
 ### Outputs
 

@@ -93,20 +93,17 @@ function viewToArrayBuffer(view: ArrayBufferView): ArrayBuffer {
   ) as ArrayBuffer
 }
 
-/** 从本地路径读取字体文件（相对路径按当前工作目录解析） */
+/** 从本地路径读取字体文件 */
 export async function loadFontFromPath(fontPath: string): Promise<ArrayBuffer> {
-  // node 模块按需加载：只有真正读取本地文件时才需要，浏览器环境不会引入它们
   const [{ readFileSync }, { resolve }] = await Promise.all([
     import('node:fs'),
     import('node:path')
   ])
-  // 相对路径按当前工作目录解析：模块自身路径在打包后会被压平，不能作为参照基准
   const resolvedPath = resolve(fontPath)
 
   try {
     return viewToArrayBuffer(readFileSync(resolvedPath))
   } catch (error) {
-    // 带上底层原因：读取失败可能是文件不存在，解析失败可能是不支持的文件格式
     const reason = error instanceof Error ? error.message : String(error)
     throw new Error(
       `Failed to load font "${resolvedPath}" (only .ttf/.otf are supported): ${reason}`,
@@ -115,7 +112,7 @@ export async function loadFontFromPath(fontPath: string): Promise<ArrayBuffer> {
   }
 }
 
-/** 从 URL 下载字体文件，支持 file: 与 http(s): 协议 */
+/** 从 URL 下载字体文件 */
 export async function loadFontFromUrl(
   fontUrl: string | URL
 ): Promise<ArrayBuffer> {
