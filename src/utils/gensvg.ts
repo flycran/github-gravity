@@ -42,15 +42,32 @@ export async function gensvg(options: GensvgOptions): Promise<string> {
   const toSvgDeg = (rotation: number) =>
     +((-(rotation ?? 0) * 180) / Math.PI).toFixed(2)
 
-  // CSS 引擎：keyframes 与 data-g{index} 绑定规则逐方块收集，最后收敛进单个 style
+  // CSS 引擎：keyframes 与动画名 class（g{index}）规则逐方块收集，最后收敛进单个 style
   const keyframesRules: string[] = []
   const bindingRules: string[] = []
+  // fill 按颜色去重分组为 class 规则（贡献色阶取值极少），方块元素只携带
+  // 「颜色 + 动画名」两个 class：动画名经 --n 注入公共 animation 声明
+  const fillRules: string[] = []
+  const fillClassByColor = new Map<string, string>()
+  const cssShapeClass = (color: string) => {
+    let cls = fillClassByColor.get(color)
+    if (!cls) {
+      cls = `f${fillClassByColor.size}`
+      fillClassByColor.set(color, cls)
+      fillRules.push(`.${cls}{fill:${color}}`)
+    }
+    return cls
+  }
 
   const contributionsSvg = result.contributions
     .map((contribution: ContributionJson, index: number) => {
-      const shapeElement = isCircle
-        ? `<circle r="${(op.size / 2) * SCALE}" fill="${contribution.color}"/>`
-        : `<rect x="${-(op.size / 2) * SCALE}" y="${-(op.size / 2) * SCALE}" width="${op.size * SCALE}" height="${op.size * SCALE}" fill="${contribution.color}"/>`
+      const shapeElement = op.css
+        ? isCircle
+          ? `<circle class="${cssShapeClass(contribution.color)} g${index}"/>`
+          : `<rect class="${cssShapeClass(contribution.color)} g${index}"/>`
+        : isCircle
+          ? `<circle r="${(op.size / 2) * SCALE}" fill="${contribution.color}"/>`
+          : `<rect x="${-(op.size / 2) * SCALE}" y="${-(op.size / 2) * SCALE}" width="${op.size * SCALE}" height="${op.size * SCALE}" fill="${contribution.color}"/>`
 
       if (op.css) {
         // 帧偏移：压缩后按真实节奏换算（5 位小数避免相邻帧舍入碰撞），
@@ -77,12 +94,9 @@ export async function gensvg(options: GensvgOptions): Promise<string> {
             })
             .join('')}}`
         )
-        bindingRules.push(`[data-g${index}]{--n:g${index}}`)
+        bindingRules.push(`.g${index}{--n:g${index}}`)
 
-        return `\
-<g data-g${index}="">\
-${shapeElement}\
-</g>`
+        return shapeElement
       }
 
       const values = contribution.trajectory
@@ -123,6 +137,11 @@ ${rotateAnim}\
   ].join('')
   const cssRotateTemplate = isCircle ? '' : ' rotate(var(--r))'
 
+  // 方块几何全部相同，收进 SVG2 geometry properties 公共规则，不再逐方块写属性
+  const cssGeometryRule = isCircle
+    ? `#b>circle{r:${(op.size / 2) * SCALE}px}`
+    : `#b>rect{x:${-(op.size / 2) * SCALE}px;y:${-(op.size / 2) * SCALE}px;width:${op.size * SCALE}px;height:${op.size * SCALE}px}`
+
   // animation 值拼进 CDATA 内的规则体，花括号、分号或 CDATA 结束符都会提前
   // 退出声明作用域、撕碎整个 style 块
   if (op.css && (/[{};]/.test(op.animation) || op.animation.includes(']]>'))) {
@@ -138,13 +157,15 @@ ${rotateAnim}\
 <style><![CDATA[\
 ${cssPropertyRules}\
 :root{--dur:${dur}}\
-#b>g{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${op.animation}}\
+#b>*{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${op.animation}}\
+${cssGeometryRule}\
+${fillRules.join('')}\
 ${keyframesRules.join('')}\
 ${bindingRules.join('')}\
 ]]></style>`
     : ''
 
-  // 方块收进 #b 组，供公共规则 #b>g 命中
+  // 方块收进 #b 组，供公共规则 #b>* 命中
   const blocksSvg = op.css
     ? `<g id="b">${contributionsSvg}</g>`
     : contributionsSvg
