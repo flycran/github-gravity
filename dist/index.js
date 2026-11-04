@@ -46593,6 +46593,14 @@ async function startSimulation(options) {
 }
 
 /**
+ * 去掉换行与行首缩进，把缩进排版的多行模板压缩成紧凑输出。
+ * 仅当所有文本内容都位于属性值或 CDATA 内（且值本身不含换行）时安全——
+ * 本文件生成的标记满足该约束。
+ */
+function minifySvg(svg) {
+    return svg.replace(/\n\s*/g, '');
+}
+/**
  * 生成贡献方块重力模拟的 SVG 动画字符串。
  * 模拟 GitHub 用户的贡献方块从上方掉落，最终静止在底部。
  *
@@ -46625,17 +46633,19 @@ async function gensvg(options) {
     const textPathsSvg = result.textPaths
         .map(({ pathData }) => `<path d="${pathData}" fill="${op.textColor}"/>`)
         .join('');
-    const textGroupSvg = `\
-<g transform="translate(${result.offsetX * SCALE}, ${(op.height - result.centerY) * SCALE}) scale(${SCALE})">\
-${textPathsSvg}\
-</g>`;
-    return `\
-<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth * op.scale}" height="${svgHeight * op.scale}" viewBox="0 0 ${svgWidth} ${svgHeight}">\
-${styleSvg}\
-<rect width="${svgWidth}" height="${svgHeight}" fill="${op.backgroundColor}"/>\
-${blocksSvg}\
-${textGroupSvg}\
-</svg>`;
+    const textGroupSvg = `
+    <g transform="translate(${result.offsetX * SCALE}, ${(op.height - result.centerY) * SCALE}) scale(${SCALE})">
+      ${textPathsSvg}
+    </g>
+  `;
+    return minifySvg(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth * op.scale}" height="${svgHeight * op.scale}" viewBox="0 0 ${svgWidth} ${svgHeight}">
+      ${styleSvg}
+      <rect width="${svgWidth}" height="${svgHeight}" fill="${op.backgroundColor}"/>
+      ${blocksSvg}
+      ${textGroupSvg}
+    </svg>
+  `);
 }
 /**
  * SMIL 引擎：每个方块自带 animateTransform，轨迹写进 values，
@@ -46660,15 +46670,14 @@ function renderSmilBlocks(contributions, ctx) {
                 .map(({ rotation }) => ctx.toSvgDeg(rotation ?? 0))
                 .join(';');
         const rotateAnim = rotations
-            ? `\
-<animateTransform attributeName="transform" attributeType="XML" type="rotate" additive="sum" values="${rotations}"${keyTimesAttr} dur="${ctx.dur}" fill="freeze"/>`
+            ? `<animateTransform attributeName="transform" attributeType="XML" type="rotate" additive="sum" values="${rotations}"${keyTimesAttr} dur="${ctx.dur}" fill="freeze"/>`
             : '';
-        return `\
-<g data-date="${contribution.date}">\
-${shapeElement}\
-<animateTransform attributeName="transform" attributeType="XML" type="translate" values="${values}"${keyTimesAttr} dur="${ctx.dur}" fill="freeze"/>\
-${rotateAnim}\
-</g>`;
+        return `
+        <g data-date="${contribution.date}">
+          ${shapeElement}
+          <animateTransform attributeName="transform" attributeType="XML" type="translate" values="${values}"${keyTimesAttr} dur="${ctx.dur}" fill="freeze"/>
+          ${rotateAnim}
+        </g>`;
     })
         .join('');
     return { styleSvg: '', blocksSvg };
@@ -46738,16 +46747,17 @@ function renderCssBlocks(contributions, ctx, animation) {
         : `#b>rect{x:${-ctx.halfSizePx}px;y:${-ctx.halfSizePx}px;width:${ctx.sizePx}px;height:${ctx.sizePx}px}`;
     // CDATA（style 处于 XML 解析上下文，<length> 会被当标签解析）；
     // animation 默认值 = 变量注入的动画名与时长 + linear + 末帧冻结与首帧前的位置兜底
-    const styleSvg = `\
-<style><![CDATA[\
-${cssPropertyRules}\
-:root{--dur:${ctx.dur}}\
-#b>*{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${animation}}\
-${cssGeometryRule}\
-${fillRules.join('')}\
-${keyframesRules.join('')}\
-${bindingRules.join('')}\
-]]></style>`;
+    const styleSvg = `
+    <style><![CDATA[
+      ${cssPropertyRules}
+      :root{--dur:${ctx.dur}}
+      #b>*{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${animation}}
+      ${cssGeometryRule}
+      ${fillRules.join('')}
+      ${keyframesRules.join('')}
+      ${bindingRules.join('')}
+    ]]></style>
+  `;
     // 方块收进 #b 组，供公共规则命中
     return { styleSvg, blocksSvg: `<g id="b">${blocksSvg}</g>` };
 }
