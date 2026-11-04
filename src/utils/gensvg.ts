@@ -53,31 +53,70 @@ export async function gensvg(options: GensvgOptions): Promise<string> {
         : `<rect x="${-(op.size / 2) * SCALE}" y="${-(op.size / 2) * SCALE}" width="${op.size * SCALE}" height="${op.size * SCALE}" fill="${contribution.color}"/>`
 
       if (op.css) {
-        // 帧偏移：压缩后按真实节奏换算（5 位小数避免相邻帧舍入碰撞），
+        const positions = contribution.trajectory.position
+        const rotations = contribution.trajectory.rotation
+        // 位置帧节奏：压缩轨迹按 span 前缀和换算（5 位小数避免相邻帧舍入碰撞），
         // 未压缩时为均匀分布
-        const times = buildKeyTimesArray(contribution.trajectory)
-        const frameCount = contribution.trajectory.length
+        const times = buildKeyTimesArray(positions)
         const fractions =
           times ??
           Array.from(
-            { length: frameCount },
-            (_, i) => i / Math.max(frameCount - 1, 1)
+            { length: positions.length },
+            (_, i) => i / Math.max(positions.length - 1, 1)
           )
         const offsets = fractions.map((t) => `${+(t * 100).toFixed(5)}%`)
 
-        // 每帧只写坐标变量，transform 的合成模板在公共规则；
-        // rotate 叠加在 translate 之后，绕方块中心旋转
-        keyframesRules.push(
-          `@keyframes g${index}{${contribution.trajectory
-            .map((p, i) => {
-              const rotation = isCircle
-                ? ''
-                : `;--r:${toSvgDeg(p.rotation ?? 0)}deg`
-              return `${offsets[i]}{--x:${toSvgX(p.x)}px;--y:${toSvgY(p.y)}px${rotation}}`
-            })
-            .join('')}}`
-        )
-        bindingRules.push(`[data-g${index}]{--n:g${index}}`)
+        // 自转恒定时折叠为静态变量：无动画帧、无插值，播放端零开销
+        const constantDeg =
+          rotations &&
+          rotations.length <= 2 &&
+          rotations.every((r) => r.value === rotations[0].value)
+            ? toSvgDeg(rotations[0].value)
+            : null
+
+        const binding = [`--n:g${index}`]
+        let frames = positions
+          .map(
+            (p, i) => `${offsets[i]}{--x:${toSvgX(p.x)}px;--y:${toSvgY(p.y)}px}`
+          )
+          .join('')
+
+        if (constantDeg !== null) {
+          binding.push(`--r:${constantDeg}deg`)
+        } else if (
+          rotations &&
+          rotations.length === positions.length &&
+          rotations[0].span === undefined
+        ) {
+          // 未压缩旋转与位置同帧同节奏：并入同一 keyframes，省一套动画开销
+          frames = positions
+            .map(
+              (p, i) =>
+                `${offsets[i]}{--x:${toSvgX(p.x)}px;--y:${toSvgY(p.y)}px;--r:${toSvgDeg(rotations[i].value)}deg}`
+            )
+            .join('')
+        } else if (rotations) {
+          // 压缩旋转走独立时间轴：单独 keyframes 挂到第二个动画名上，
+          // 帧数与节奏都不再随位置通道牵制
+          const rotFractions =
+            buildKeyTimesArray(rotations) ??
+            Array.from(
+              { length: rotations.length },
+              (_, i) => i / Math.max(rotations.length - 1, 1)
+            )
+          const rotOffsets = rotFractions.map(
+            (t) => `${+(t * 100).toFixed(5)}%`
+          )
+          keyframesRules.push(
+            `@keyframes g${index}r{${rotations
+              .map((r, i) => `${rotOffsets[i]}{--r:${toSvgDeg(r.value)}deg}`)
+              .join('')}}`
+          )
+          binding.push(`--nr:g${index}r`)
+        }
+
+        keyframesRules.push(`@keyframes g${index}{${frames}}`)
+        bindingRules.push(`[data-g${index}]{${binding.join(';')}}`)
 
         return `\
 <g data-g${index}="">\
@@ -85,24 +124,26 @@ ${shapeElement}\
 </g>`
       }
 
-      const values = contribution.trajectory
+      const positions = contribution.trajectory.position
+      const rotations = contribution.trajectory.rotation
+      const values = positions
         .map(({ x, y }) => `${toSvgX(x)},${toSvgY(y)}`)
         .join(';')
 
       // 开启压缩后各段时间跨度不同，需要 keyTimes 还原真实节奏；未压缩时为 null，走 SMIL 默认均分
-      const keyTimes = buildKeyTimes(contribution.trajectory)
+      const keyTimes = buildKeyTimes(positions)
       const keyTimesAttr = keyTimes ? ` keyTimes="${keyTimes}"` : ''
 
-      // 方形轨迹携带自转角：叠加在平移之后，绕方块中心旋转
-      const rotations = isCircle
-        ? ''
-        : contribution.trajectory
-            .map(({ rotation }) => toSvgDeg(rotation ?? 0))
-            .join(';')
-      const rotateAnim = rotations
-        ? `\
-<animateTransform attributeName="transform" attributeType="XML" type="rotate" additive="sum" values="${rotations}"${keyTimesAttr} dur="${dur}" fill="freeze"/>`
-        : ''
+      // 自转通道按自身 span 换算 keyTimes，与平移动画的时间轴互不牵制
+      let rotateAnim = ''
+      if (rotations) {
+        const rotKeyTimes = buildKeyTimes(rotations)
+        const rotKeyTimesAttr = rotKeyTimes ? ` keyTimes="${rotKeyTimes}"` : ''
+        rotateAnim = `\
+<animateTransform attributeName="transform" attributeType="XML" type="rotate" additive="sum" values="${rotations
+          .map((r) => toSvgDeg(r.value))
+          .join(';')}"${rotKeyTimesAttr} dur="${dur}" fill="freeze"/>`
+      }
 
       return `\
 <g data-date="${contribution.date}">\
@@ -123,6 +164,12 @@ ${rotateAnim}\
   ].join('')
   const cssRotateTemplate = isCircle ? '' : ' rotate(var(--r))'
 
+  // 方形公共动画追加自转动画项；自转并入位置 keyframes 或已折叠为静态时
+  // --nr 悬空，浏览器忽略无 keyframes 的动画项，不影响其余动画
+  const cssAnimation = isCircle
+    ? op.animation
+    : `${op.animation},var(--nr) var(--dur) linear both`
+
   // animation 值拼进 CDATA 内的规则体，花括号、分号或 CDATA 结束符都会提前
   // 退出声明作用域、撕碎整个 style 块
   if (op.css && (/[{};]/.test(op.animation) || op.animation.includes(']]>'))) {
@@ -138,7 +185,7 @@ ${rotateAnim}\
 <style><![CDATA[\
 ${cssPropertyRules}\
 :root{--dur:${dur}}\
-#b>g{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${op.animation}}\
+#b>g{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${cssAnimation}}\
 ${keyframesRules.join('')}\
 ${bindingRules.join('')}\
 ]]></style>`

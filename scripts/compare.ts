@@ -10,23 +10,12 @@
 import { maxLerpDeviation, sumSpans } from '../__tests__/simplifyHelpers'
 import { startSimulation } from '../src/utils/physics'
 import {
-  CompressedTrajectoryPoint,
-  simplifyTrajectoryDP,
-  simplifyTrajectoryGreedy,
-  simplifyTrajectoryRDP
+  CompressionAlgorithm,
+  compressTrajectory,
+  Trajectory
 } from '../src/utils/simplifyTrajectory'
 
-type Point = { x: number; y: number }
-type SimplifyFn = (
-  trajectory: Point[],
-  tolerance: number
-) => CompressedTrajectoryPoint[]
-
-const algorithms: [string, SimplifyFn][] = [
-  ['DP', simplifyTrajectoryDP],
-  ['RDP', simplifyTrajectoryRDP],
-  ['Greedy', simplifyTrajectoryGreedy]
-]
+const algorithms: CompressionAlgorithm[] = ['DP', 'RDP', 'Greedy']
 
 // 与 physics.ts 相同的换算：容差以 SVG 像素输入，除以 SCALE 转为物理坐标单位
 const SCALE = 3
@@ -39,7 +28,7 @@ const simulation = await startSimulation({
 })
 
 const tracks = simulation.contributions.map((c) => c.trajectory)
-const totalPoints = tracks.reduce((sum, t) => sum + t.length, 0)
+const totalPoints = tracks.reduce((sum, t) => sum + t.position.length, 0)
 console.log(
   `${tracks.length} trajectories, ${totalPoints} points total, ` +
     `avg ${Math.round(totalPoints / tracks.length)} points/track, ` +
@@ -57,29 +46,36 @@ interface Row {
 
 const rows: Row[] = []
 
-for (const [name, simplify] of algorithms) {
+for (const algorithm of algorithms) {
   for (const tolerance of tolerances) {
     let kept = 0
     let maxDeviation = 0
     const start = performance.now()
 
     for (const track of tracks) {
-      const result = simplify(track, tolerance)
-      kept += result.length
-      if (sumSpans(result) !== track.length - 1) {
-        throw new Error(`${name}: span sum mismatch`)
+      // 对比只关心位置通道指标：旋转上限传 0，旋转通道无损全量保留
+      const result: Trajectory = compressTrajectory(
+        track,
+        tolerance,
+        0,
+        algorithm
+      )
+      const position = result.position
+      kept += position.length
+      if (sumSpans(position) !== track.position.length - 1) {
+        throw new Error(`${algorithm}: span sum mismatch`)
       }
-      const deviation = maxLerpDeviation(track, result)
+      const deviation = maxLerpDeviation(track.position, position)
       if (deviation > tolerance + 1e-9) {
         throw new Error(
-          `${name}: deviation ${deviation} exceeds tolerance ${tolerance}`
+          `${algorithm}: deviation ${deviation} exceeds tolerance ${tolerance}`
         )
       }
       maxDeviation = Math.max(maxDeviation, deviation)
     }
 
     rows.push({
-      algorithm: name,
+      algorithm,
       'tolerance(px)': (tolerance * SCALE).toFixed(2),
       'avg keyframes': +(kept / tracks.length).toFixed(1),
       compression: `${(totalPoints / kept).toFixed(1)}x`,

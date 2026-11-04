@@ -22,26 +22,11 @@ import {
 } from './githubContributions'
 import { FontSource, getTextPaths } from './parseTextPath'
 import {
-  CompressedTrajectoryPoint,
-  simplifyTrajectoryDP,
-  simplifyTrajectoryGreedy,
-  simplifyTrajectoryRDP
+  CompressionAlgorithm,
+  compressTrajectory,
+  Trajectory
 } from './simplifyTrajectory'
 import { withDefaults } from './withDefaults'
-
-/** 压缩算法名 */
-const COMPRESSION_ALGORITHMS: Record<
-  NonNullable<SimulationOptions['compressionAlgorithm']>,
-  (
-    trajectory: Point[],
-    tolerance: number,
-    maxRotationError?: number
-  ) => CompressedTrajectoryPoint[]
-> = {
-  DP: simplifyTrajectoryDP,
-  RDP: simplifyTrajectoryRDP,
-  Greedy: simplifyTrajectoryGreedy
-}
 
 /** 把自转角解缠绕到与上一帧连续（差收敛到 ±π 内），保证轨迹角度可直接线性插值 */
 function unwrapRotation(next: number, prev: number): number {
@@ -57,7 +42,7 @@ const MAX_ROTATION_ERROR = (3 * Math.PI) / 180
 export interface ContributionJson {
   date: string
   color: string
-  trajectory: Point[]
+  trajectory: Trajectory
 }
 
 export class Contribution implements ContributionJson {
@@ -66,7 +51,8 @@ export class Contribution implements ContributionJson {
   y: number
   color: string
 
-  trajectory: Point[]
+  /** 采样轨迹：位置通道每帧记录，自转角通道仅方形记录 */
+  trajectory: Trajectory
 
   /** 自转角 */
   trackRotation: boolean
@@ -85,35 +71,38 @@ export class Contribution implements ContributionJson {
     const pos = collider.translation()
     this.x = pos.x
     this.y = pos.y
-    this.trajectory = []
-    this.trajectory.push(this.recordPoint(pos))
+    this.trajectory = trackRotation
+      ? { position: [], rotation: [] }
+      : { position: [] }
+    this.recordSample(pos)
   }
 
   update() {
-    const pos = this.collider.translation()
-    this.x = pos.x
-    this.y = pos.y
-    this.trajectory.push(this.recordPoint(pos))
+    this.recordSample(this.collider.translation())
   }
 
-  /** 记录当前时刻的位置 */
-  private recordPoint(pos: { x: number; y: number }): Point {
-    if (!this.trackRotation) return { x: pos.x, y: pos.y }
-    const last = this.trajectory[this.trajectory.length - 1]
-    return {
-      x: pos.x,
-      y: pos.y,
-      rotation: unwrapRotation(this.collider.rotation(), last?.rotation ?? 0)
-    }
+  /** 记录当前时刻的位姿采样：位置入位置通道，解缠绕后的自转角入旋转通道 */
+  private recordSample(pos: { x: number; y: number }): void {
+    this.x = pos.x
+    this.y = pos.y
+    this.trajectory.position.push({ x: pos.x, y: pos.y })
+    if (!this.trackRotation) return
+    const rotations = this.trajectory.rotation!
+    const prev = rotations[rotations.length - 1]?.value ?? 0
+    rotations.push({ value: unwrapRotation(this.collider.rotation(), prev) })
   }
 
   getTrajectory() {
     return this.trajectory
   }
 
-  /** 移除轨迹末尾 count 个点 */
+  /** 移除各通道轨迹末尾 count 个采样 */
   truncateTail(count: number) {
-    this.trajectory.length = Math.max(1, this.trajectory.length - count)
+    const kept = Math.max(1, this.trajectory.position.length - count)
+    this.trajectory.position.length = kept
+    if (this.trajectory.rotation) {
+      this.trajectory.rotation.length = kept
+    }
   }
 
   toJSON(): ContributionJson {
@@ -182,19 +171,6 @@ export interface TextPathResult {
   }
 }
 
-export interface Point {
-  x: number
-  y: number
-  /**
-   * 方块自转角
-   */
-  rotation?: number
-  /**
-   * 启用压缩时，该点与前一个保留点的原始索引差
-   */
-  span?: number
-}
-
 /**
  * 计算所有字形的整体包围盒
  * @param textPaths
@@ -261,7 +237,7 @@ export interface SimulationOptions {
    * 轨迹压缩算法：Greedy（单遍贪心，快，默认）、DP（动态规划全局最优，长轨迹秒级）、
    * RDP（时空版 Ramer-Douglas-Peucker，最快，关键帧略多）
    */
-  compressionAlgorithm?: 'Greedy' | 'DP' | 'RDP'
+  compressionAlgorithm?: CompressionAlgorithm
   /**
    * 贡献方块的形状：
    * - circle 圆形
@@ -514,13 +490,15 @@ export async function startSimulation(
     time: endTime - startTime,
     contributions: contributions.map((contribution) => {
       const json = contribution.toJSON()
+      // 位置与自转按各自容差独立分段，旋转剧变不会迫使位置加密
       return !disableCompression
         ? {
             ...json,
-            trajectory: COMPRESSION_ALGORITHMS[compressionAlgorithm](
+            trajectory: compressTrajectory(
               json.trajectory,
               tolerance,
-              shape === 'square' ? MAX_ROTATION_ERROR : 0
+              shape === 'square' ? MAX_ROTATION_ERROR : 0,
+              compressionAlgorithm
             )
           }
         : json
