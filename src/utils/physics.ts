@@ -16,6 +16,7 @@ import {
   VELOCITY_THRESHOLD
 } from '../const'
 import {
+  CalendarResponse,
   fetchContributions,
   INTENSITY_COLORS,
   RawContributionDay
@@ -305,6 +306,8 @@ export interface SimulationOptions {
    * 另有部分字体因 opentype.js 的 GSUB 解析限制无法使用
    */
   font?: FontSource
+  /** 内部调试用：提供贡献图数据时跳过 fetchContributions 网络请求，直接以该数据模拟 */
+  calendarList?: CalendarResponse
 }
 
 /** 创建完成的世界与其中的物体引用，可交给渲染器预览或自行迭代 */
@@ -337,7 +340,8 @@ export async function createSimulationWorld(
     width,
     height,
     friction,
-    restitution
+    restitution,
+    calendarList
   } = withDefaults(DEFAULT_OPTIONS, options)
   const world = await createWord(width, height)
   const contributions: Contribution[] = []
@@ -373,7 +377,8 @@ export async function createSimulationWorld(
     }
   }
 
-  const githubContributions = await fetchContributions(username)
+  const githubContributions =
+    calendarList ?? (await fetchContributions(username))
 
   const rowLen = githubContributions.contributions.length
   const rowWidth = size * rowLen + interval * (rowLen - 1)

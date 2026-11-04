@@ -46446,7 +46446,7 @@ function getTextBoundBox(textPaths, { width, height, textTop }) {
  * 创建模拟世界并放入全部物体：地面、墙壁、用户名文字碰撞体与贡献方块。
  */
 async function createSimulationWorld(options) {
-    const { username, text = username, textTop, shape, font, size, interval, fontSize, width, height, friction, restitution } = withDefaults(DEFAULT_OPTIONS, options);
+    const { username, text = username, textTop, shape, font, size, interval, fontSize, width, height, friction, restitution, calendarList } = withDefaults(DEFAULT_OPTIONS, options);
     const world = await createWord(width, height);
     const contributions = [];
     // 创建用户名文字静止碰撞体（居中对齐）
@@ -46477,7 +46477,7 @@ async function createSimulationWorld(options) {
             world.createCollider(colliderDesc.setFriction(0.3), textBody);
         }
     }
-    const githubContributions = await fetchContributions(username);
+    const githubContributions = calendarList ?? (await fetchContributions(username));
     const rowLen = githubContributions.contributions.length;
     const rowWidth = size * rowLen + interval * (rowLen - 1);
     // left 是矩阵左边缘，而碰撞体按中心定位，首列中心需再右移半个方块
