@@ -63,14 +63,8 @@ for (const algorithm of algorithms) {
       }
       // 单轴校验：每轴的插值偏差都不超过 tolerance（压缩承诺的误差上界）
       const deviation = Math.max(
-        maxChannelDeviation(
-          track.x.map((f) => f.value),
-          result.x
-        ),
-        maxChannelDeviation(
-          track.y.map((f) => f.value),
-          result.y
-        )
+        maxChannelDeviation(track.x, result.x),
+        maxChannelDeviation(track.y, result.y)
       )
       if (deviation > tolerance + 1e-9) {
         throw new Error(

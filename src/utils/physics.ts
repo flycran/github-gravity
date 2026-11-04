@@ -25,7 +25,9 @@ import { FontSource, getTextPaths } from './parseTextPath'
 import {
   CompressionAlgorithm,
   compressTrajectory,
-  Trajectory
+  RawTrajectory,
+  Trajectory,
+  toKeyframeTrajectory
 } from './simplifyTrajectory'
 import { withDefaults } from './withDefaults'
 
@@ -40,10 +42,11 @@ function unwrapRotation(next: number, prev: number): number {
 /** 方形自转轨迹的角度插值误差上限 */
 const MAX_ROTATION_ERROR = (3 * Math.PI) / 180
 
+/** 模拟产出的贡献方块：轨迹为原始采样序列 */
 export interface ContributionJson {
   date: string
   color: string
-  trajectory: Trajectory
+  trajectory: RawTrajectory
 }
 
 export class Contribution implements ContributionJson {
@@ -52,8 +55,8 @@ export class Contribution implements ContributionJson {
   y: number
   color: string
 
-  /** 采样轨迹：x/y 通道每帧记录，自转角通道仅方形记录 */
-  trajectory: Trajectory
+  /** 原始采样轨迹：x/y 通道每帧记录，自转角通道仅方形记录 */
+  trajectory: RawTrajectory
 
   /** 自转角 */
   trackRotation: boolean
@@ -86,12 +89,12 @@ export class Contribution implements ContributionJson {
   private recordSample(pos: { x: number; y: number }): void {
     this.x = pos.x
     this.y = pos.y
-    this.trajectory.x.push({ value: pos.x })
-    this.trajectory.y.push({ value: pos.y })
+    this.trajectory.x.push(pos.x)
+    this.trajectory.y.push(pos.y)
     if (!this.trackRotation) return
     const rotations = this.trajectory.rotation!
-    const prev = rotations[rotations.length - 1]?.value ?? 0
-    rotations.push({ value: unwrapRotation(this.collider.rotation(), prev) })
+    const prev = rotations[rotations.length - 1] ?? 0
+    rotations.push(unwrapRotation(this.collider.rotation(), prev))
   }
 
   getTrajectory() {
@@ -212,11 +215,18 @@ export function getTextBoundBox(
   }
 }
 
+/** 渲染用贡献方块：轨迹已统一为关键帧形态（未压缩时为无 span 的全量关键帧） */
+export interface RenderedContribution {
+  date: string
+  color: string
+  trajectory: Trajectory
+}
+
 export interface SimulationResult {
   stepCount: number
   time: number
   textPaths: Pick<TextPathResult, 'rect' | 'pathData'>[]
-  contributions: ContributionJson[]
+  contributions: RenderedContribution[]
   /** 文字在物理世界中的 X 偏移量 */
   offsetX: number
   /** 文字在物理世界中的 Y 偏移量 */
@@ -502,21 +512,22 @@ export async function startSimulation(
   return {
     stepCount,
     time: endTime - startTime,
-    contributions: contributions.map((contribution) => {
+    contributions: contributions.map((contribution): RenderedContribution => {
       const json = contribution.toJSON()
       // 位置与自转按各自容差独立分段，旋转剧变不会迫使位置加密
-      return !disableCompression
-        ? {
-            ...json,
-            trajectory: compressTrajectory(
+      return {
+        date: json.date,
+        color: json.color,
+        trajectory: disableCompression
+          ? toKeyframeTrajectory(json.trajectory)
+          : compressTrajectory(
               json.trajectory,
               tolerance,
               shape === 'square' ? MAX_ROTATION_ERROR : 0,
               compressionAlgorithm,
               jointPosition
             )
-          }
-        : json
+      }
     }),
     textPaths: textPaths.map(({ pathData, rect }) => ({
       pathData: pathData,

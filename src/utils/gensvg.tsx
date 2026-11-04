@@ -4,7 +4,11 @@ import {
   type PropsWithChildren
 } from '@kitajs/html'
 import { DEFAULT_OPTIONS, SCALE, TIMESTEP } from '../const'
-import { ContributionJson, SimulationOptions, startSimulation } from './physics'
+import {
+  RenderedContribution,
+  SimulationOptions,
+  startSimulation
+} from './physics'
 import {
   buildKeyTimes,
   buildKeyTimesArray,
@@ -128,7 +132,7 @@ export async function gensvg(options: GensvgOptions): Promise<string> {
  * keyTimes，旋转剧变不会迫使平移加密。
  */
 function renderSmilBlocks(
-  contributions: ContributionJson[],
+  contributions: RenderedContribution[],
   ctx: EngineContext
 ): EngineOutput {
   const blocks = contributions.map((contribution) => {
@@ -199,7 +203,7 @@ function renderSmilBlocks(
  * transform 合成、几何与 fill 全部收敛进自包含 style 的公共规则，逐方块输出最小化。
  */
 function renderCssBlocks(
-  contributions: ContributionJson[],
+  contributions: RenderedContribution[],
   ctx: EngineContext,
   animation: string
 ): EngineOutput {

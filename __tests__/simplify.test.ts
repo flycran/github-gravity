@@ -8,9 +8,9 @@ import {
   CompressionAlgorithm,
   compressTrajectory,
   mergePositionChannels,
+  RawTrajectory,
   simplifyChannel,
-  simplifyPositions,
-  Trajectory
+  simplifyPositions
 } from '../src/utils/simplifyTrajectory'
 import {
   maxChannelDeviation,
@@ -24,20 +24,14 @@ describe('simplifyChannel', () => {
   for (const algorithm of algorithms) {
     describe(algorithm, () => {
       const simplify = (values: number[], tolerance: number) =>
-        simplifyChannel(
-          values.map((value) => ({ value })),
-          tolerance,
-          algorithm
-        )
+        simplifyChannel(values, tolerance, algorithm)
 
       it('handles trivial inputs: empty, single point, two points', () => {
         expect(simplifyChannel([], 1, algorithm)).toEqual([])
-        expect(simplifyChannel([{ value: 2 }], 1, algorithm)).toEqual([
+        expect(simplifyChannel([2], 1, algorithm)).toEqual([
           { value: 2, span: 0 }
         ])
-        expect(
-          simplifyChannel([{ value: 0 }, { value: 3 }], 1, algorithm)
-        ).toEqual([
+        expect(simplifyChannel([0, 3], 1, algorithm)).toEqual([
           { value: 0, span: 0 },
           { value: 3, span: 1 }
         ])
@@ -74,11 +68,7 @@ describe('simplifyChannel', () => {
       it('keeps every point at tolerance 0 on a curved trajectory', () => {
         // 曲率恒非零的曲线上不存在可无损并段的相邻点
         const curve = Array.from({ length: 50 }, (_, i) => i * i)
-        const result = simplifyChannel(
-          curve.map((value) => ({ value })),
-          0,
-          algorithm
-        )
+        const result = simplifyChannel(curve, 0, algorithm)
         expect(result).toHaveLength(curve.length)
         expect(result.every((p, i) => p.span === (i === 0 ? 0 : 1))).toBe(true)
       })
@@ -93,11 +83,7 @@ describe('simplifyChannel', () => {
       it('bounds deviation, compresses and preserves total time on a curve', () => {
         const curve = Array.from({ length: 50 }, (_, i) => i * i)
         const tolerance = 4
-        const result = simplifyChannel(
-          curve.map((value) => ({ value })),
-          tolerance,
-          algorithm
-        )
+        const result = simplifyChannel(curve, tolerance, algorithm)
         expect(result.length).toBeLessThan(curve.length)
         expect(sumSpans(result)).toBe(curve.length - 1)
         expect(maxChannelDeviation(curve, result)).toBeLessThanOrEqual(
@@ -106,14 +92,13 @@ describe('simplifyChannel', () => {
       })
 
       it('does not mutate the input trajectory', () => {
-        const frames = [{ value: 0 }, { value: 1 }, { value: 0 }]
-        const snapshot = frames.map((f) => ({ ...f }))
-        simplifyChannel(frames, 0.1, algorithm)
-        expect(frames).toEqual(snapshot)
+        const values = [0, 1, 0]
+        simplifyChannel(values, 0.1, algorithm)
+        expect(values).toEqual([0, 1, 0])
       })
 
       it('throws on negative tolerance', () => {
-        expect(() => simplifyChannel([{ value: 0 }], -0.1, algorithm)).toThrow(
+        expect(() => simplifyChannel([0], -0.1, algorithm)).toThrow(
           'tolerance must be >= 0, got -0.1'
         )
       })
@@ -126,12 +111,9 @@ describe('simplifyPositions', () => {
     describe(algorithm, () => {
       it('bounds the combined (euclidean) deviation, not per-axis', () => {
         // 两轴各偏 0.4：单轴都在容差内，但合成偏差 0.57 > 0.5，必须保留折点
-        const track = [
-          { x: 0, y: 0 },
-          { x: 0.4, y: 0.4 },
-          { x: 0, y: 0 }
-        ]
-        expect(simplifyPositions(track, 0.5, algorithm)).toEqual([
+        expect(
+          simplifyPositions([0, 0.4, 0], [0, 0.4, 0], 0.5, algorithm)
+        ).toEqual([
           { x: 0, y: 0, span: 0 },
           { x: 0.4, y: 0.4, span: 1 },
           { x: 0, y: 0, span: 1 }
@@ -141,15 +123,7 @@ describe('simplifyPositions', () => {
       it('absorbs a single-axis bump within the combined budget', () => {
         // 只有 y 偏 0.4：合成偏差 0.4 <= 0.5，可并段
         expect(
-          simplifyPositions(
-            [
-              { x: 0, y: 0 },
-              { x: 0, y: 0.4 },
-              { x: 0, y: 0 }
-            ],
-            0.5,
-            algorithm
-          )
+          simplifyPositions([0, 0, 0], [0, 0.4, 0], 0.5, algorithm)
         ).toEqual([
           { x: 0, y: 0, span: 0 },
           { x: 0, y: 0, span: 2 }
@@ -159,7 +133,12 @@ describe('simplifyPositions', () => {
       it('preserves total time and bounds deviation on a parabola', () => {
         const track = makeParabola(50)
         const tolerance = 1
-        const result = simplifyPositions(track, tolerance, algorithm)
+        const result = simplifyPositions(
+          track.map((p) => p.x),
+          track.map((p) => p.y),
+          tolerance,
+          algorithm
+        )
         expect(result.length).toBeLessThan(track.length)
         expect(sumSpans(result)).toBe(track.length - 1)
         expect(maxLerpDeviation(track, result)).toBeLessThanOrEqual(
@@ -172,10 +151,10 @@ describe('simplifyPositions', () => {
 
 describe('compressTrajectory', () => {
   // 位置匀速右移 + 自转匀速：三个通道的插值都精确命中，各自收缩为两帧
-  const uniformTrajectory: Trajectory = {
-    x: Array.from({ length: 5 }, (_, i) => ({ value: i })),
-    y: Array.from({ length: 5 }, () => ({ value: 0 })),
-    rotation: Array.from({ length: 5 }, (_, i) => ({ value: i * 0.5 }))
+  const uniformTrajectory: RawTrajectory = {
+    x: Array.from({ length: 5 }, (_, i) => i),
+    y: Array.from({ length: 5 }, () => 0),
+    rotation: Array.from({ length: 5 }, (_, i) => i * 0.5)
   }
 
   it('compresses x, y and rotation channels independently', () => {
@@ -198,10 +177,10 @@ describe('compressTrajectory', () => {
   it('does not let a fast-spinning channel densify the position channels', () => {
     // 位置匀速但自转角在中点跳变：旧联合压缩会因角度约束加密位置通道，
     // 通道分离后跳变只加密旋转通道
-    const trajectory: Trajectory = {
-      x: [{ value: 0 }, { value: 1 }, { value: 2 }],
-      y: [{ value: 0 }, { value: 0 }, { value: 0 }],
-      rotation: [{ value: 0 }, { value: 10 }, { value: 0 }]
+    const trajectory: RawTrajectory = {
+      x: [0, 1, 2],
+      y: [0, 0, 0],
+      rotation: [0, 10, 0]
     }
     const result = compressTrajectory(trajectory, 0, 0.1)
     expect(result.x).toEqual([
@@ -216,35 +195,27 @@ describe('compressTrajectory', () => {
   })
 
   it('keeps independent time conservation and per-axis bounds', () => {
-    const trajectory: Trajectory = {
-      x: Array.from({ length: 40 }, (_, i) => ({ value: i * 0.5 })),
-      y: Array.from({ length: 40 }, (_, i) => ({
-        value: 100 * (1 - (2 * (i / 39) - 1) ** 2)
-      })),
-      rotation: Array.from({ length: 40 }, (_, i) => ({ value: i * 0.3 }))
+    const trajectory: RawTrajectory = {
+      x: Array.from({ length: 40 }, (_, i) => i * 0.5),
+      y: Array.from(
+        { length: 40 },
+        (_, i) => 100 * (1 - (2 * (i / 39) - 1) ** 2)
+      ),
+      rotation: Array.from({ length: 40 }, (_, i) => i * 0.3)
     }
     const tolerance = 4
     const result = compressTrajectory(trajectory, tolerance, 0.4)
     expect(sumSpans(result.x)).toBe(39)
     expect(sumSpans(result.y)).toBe(39)
     expect(sumSpans(result.rotation!)).toBe(39)
+    expect(maxChannelDeviation(trajectory.x, result.x)).toBeLessThanOrEqual(
+      tolerance + 1e-9
+    )
+    expect(maxChannelDeviation(trajectory.y, result.y)).toBeLessThanOrEqual(
+      tolerance + 1e-9
+    )
     expect(
-      maxChannelDeviation(
-        trajectory.x.map((f) => f.value),
-        result.x
-      )
-    ).toBeLessThanOrEqual(tolerance + 1e-9)
-    expect(
-      maxChannelDeviation(
-        trajectory.y.map((f) => f.value),
-        result.y
-      )
-    ).toBeLessThanOrEqual(tolerance + 1e-9)
-    expect(
-      maxChannelDeviation(
-        trajectory.rotation!.map((r) => r.value),
-        result.rotation!
-      )
+      maxChannelDeviation(trajectory.rotation!, result.rotation!)
     ).toBeLessThanOrEqual(0.4 + 1e-9)
   })
 
@@ -343,10 +314,8 @@ describe('mergePositionChannels', () => {
   it('interpolates identically to the split channels at every original moment', () => {
     // 无损性断言：对每个原始时刻，合并表达的线性插值必须等于拆分表达
     // 两通道各自的线性插值（SMIL 消费合并帧与 CSS 消费拆分通道视觉一致）
-    const y = Array.from({ length: 30 }, (_, i) => ({ value: i * i * 0.2 }))
-    const x = Array.from({ length: 30 }, (_, i) => ({
-      value: i === 15 ? 99 : i * 0.1
-    }))
+    const y = Array.from({ length: 30 }, (_, i) => i * i * 0.2)
+    const x = Array.from({ length: 30 }, (_, i) => (i === 15 ? 99 : i * 0.1))
     const compressed = compressTrajectory({ x, y }, 3, 0)
     const merged = mergePositionChannels(compressed.x, compressed.y)
     expect(merged.keyTimes).not.toBeNull()
