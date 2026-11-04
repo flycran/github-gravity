@@ -5,6 +5,8 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "@kitajs/html",
     "types": ["node", "bun"],
     "lib": ["ES2022"],
     "module": "ESNext",

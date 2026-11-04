@@ -1,3 +1,8 @@
+import {
+  type Children,
+  contentsToString,
+  type PropsWithChildren
+} from '@kitajs/html'
 import { DEFAULT_OPTIONS, SCALE, TIMESTEP } from '../const'
 import { ContributionJson, SimulationOptions, startSimulation } from './physics'
 import { buildKeyTimes, buildKeyTimesArray } from './simplifyTrajectory'
@@ -33,19 +38,20 @@ interface EngineContext {
   toSvgDeg: (rotation: number) => number
 }
 
-/** 引擎输出：方块组与自包含 style 片段（SMIL 引擎没有 style） */
+/** 引擎输出：方块树与自包含 style 片段（SMIL 引擎没有 style） */
 interface EngineOutput {
-  styleSvg: string
-  blocksSvg: string
+  style: Children
+  blocks: JSX.Element
 }
 
 /**
- * 去掉换行与行首缩进，把缩进排版的多行模板压缩成紧凑输出。
- * 仅当所有文本内容都位于属性值或 CDATA 内（且值本身不含换行）时安全——
- * 本文件生成的标记满足该约束。
+ * 包裹含空元素的 SVG 片段，把空元素折回自闭合形式：
+ * @kitajs/html 只为 HTML void 标签输出 <tag/>，SVG 空元素会被展开成
+ * <circle></circle>。本文件渲染出的这几种元素恒无子节点。
  */
-function minifySvg(svg: string): string {
-  return svg.replace(/\n\s*/g, '')
+async function SelfClosed({ children }: PropsWithChildren): Promise<string> {
+  const markup = await contentsToString([children])
+  return markup.replace(/><\/(circle|rect|path|animateTransform)>/g, '/>')
 }
 
 /**
@@ -76,30 +82,33 @@ export async function gensvg(options: GensvgOptions): Promise<string> {
   }
 
   // 双引擎派发：各自生成方块组与 style 片段
-  const { styleSvg, blocksSvg } = op.css
+  const { style, blocks } = op.css
     ? renderCssBlocks(result.contributions, ctx, op.animation)
     : renderSmilBlocks(result.contributions, ctx)
 
-  // 用 path 渲染文字路径，与物理碰撞体坐标对齐
-  // opentype 坐标 → SVG 坐标: svgX = (opentypeX + offsetX) * SCALE, svgY = (height - centerY + opentypeY) * SCALE
-  const textPathsSvg = result.textPaths
-    .map(({ pathData }) => `<path d="${pathData}" fill="${op.textColor}"/>`)
-    .join('')
-
-  const textGroupSvg = `
-    <g transform="translate(${result.offsetX * SCALE}, ${(op.height - result.centerY) * SCALE}) scale(${SCALE})">
-      ${textPathsSvg}
-    </g>
-  `
-
-  return minifySvg(`
-    <svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth * op.scale}" height="${svgHeight * op.scale}" viewBox="0 0 ${svgWidth} ${svgHeight}">
-      ${styleSvg}
-      <rect width="${svgWidth}" height="${svgHeight}" fill="${op.backgroundColor}"/>
-      ${blocksSvg}
-      ${textGroupSvg}
+  // 含空元素的片段各自经 SelfClosed 折叠，根节点只做装配
+  return await (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={svgWidth * op.scale}
+      height={svgHeight * op.scale}
+      viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
+      {style}
+      <SelfClosed>
+        <rect width={svgWidth} height={svgHeight} fill={op.backgroundColor} />
+      </SelfClosed>
+      <SelfClosed>{blocks}</SelfClosed>
+      {/* 文字路径用 path 渲染，与物理碰撞体坐标对齐 */}
+      <SelfClosed>
+        <g
+          transform={`translate(${result.offsetX * SCALE}, ${(op.height - result.centerY) * SCALE}) scale(${SCALE})`}>
+          {result.textPaths.map(({ pathData }) => (
+            <path d={pathData} fill={op.textColor} />
+          ))}
+        </g>
+      </SelfClosed>
     </svg>
-  `)
+  )
 }
 
 /**
@@ -110,40 +119,62 @@ function renderSmilBlocks(
   contributions: ContributionJson[],
   ctx: EngineContext
 ): EngineOutput {
-  const blocksSvg = contributions
-    .map((contribution) => {
-      const shapeElement = ctx.isCircle
-        ? `<circle r="${ctx.halfSizePx}" fill="${contribution.color}"/>`
-        : `<rect x="${-ctx.halfSizePx}" y="${-ctx.halfSizePx}" width="${ctx.sizePx}" height="${ctx.sizePx}" fill="${contribution.color}"/>`
+  const blocks = contributions.map((contribution) => {
+    const shape = ctx.isCircle ? (
+      <circle r={ctx.halfSizePx} fill={contribution.color} />
+    ) : (
+      <rect
+        x={-ctx.halfSizePx}
+        y={-ctx.halfSizePx}
+        width={ctx.sizePx}
+        height={ctx.sizePx}
+        fill={contribution.color}
+      />
+    )
 
-      const values = contribution.trajectory
-        .map(({ x, y }) => `${ctx.toSvgX(x)},${ctx.toSvgY(y)}`)
-        .join(';')
+    const values = contribution.trajectory
+      .map(({ x, y }) => `${ctx.toSvgX(x)},${ctx.toSvgY(y)}`)
+      .join(';')
 
-      // 开启压缩后各段时间跨度不同，需要 keyTimes 还原真实节奏；未压缩时为 null，走 SMIL 默认均分
-      const keyTimes = buildKeyTimes(contribution.trajectory)
-      const keyTimesAttr = keyTimes ? ` keyTimes="${keyTimes}"` : ''
+    // 开启压缩后各段时间跨度不同，需要 keyTimes 还原真实节奏；未压缩时为 null，走 SMIL 默认均分
+    const keyTimes = buildKeyTimes(contribution.trajectory)
 
-      // 方形轨迹携带自转角：叠加在平移之后，绕方块中心旋转
-      const rotations = ctx.isCircle
-        ? ''
-        : contribution.trajectory
-            .map(({ rotation }) => ctx.toSvgDeg(rotation ?? 0))
-            .join(';')
-      const rotateAnim = rotations
-        ? `<animateTransform attributeName="transform" attributeType="XML" type="rotate" additive="sum" values="${rotations}"${keyTimesAttr} dur="${ctx.dur}" fill="freeze"/>`
-        : ''
+    // 方形轨迹携带自转角：叠加在平移之后，绕方块中心旋转
+    const rotations = ctx.isCircle
+      ? ''
+      : contribution.trajectory
+          .map(({ rotation }) => ctx.toSvgDeg(rotation ?? 0))
+          .join(';')
 
-      return `
-        <g data-date="${contribution.date}">
-          ${shapeElement}
-          <animateTransform attributeName="transform" attributeType="XML" type="translate" values="${values}"${keyTimesAttr} dur="${ctx.dur}" fill="freeze"/>
-          ${rotateAnim}
-        </g>`
-    })
-    .join('')
+    return (
+      <g data-date={contribution.date}>
+        {shape}
+        <animateTransform
+          attributeName="transform"
+          attributeType="XML"
+          type="translate"
+          values={values}
+          keyTimes={keyTimes}
+          dur={ctx.dur}
+          fill="freeze"
+        />
+        {rotations && (
+          <animateTransform
+            attributeName="transform"
+            attributeType="XML"
+            type="rotate"
+            additive="sum"
+            values={rotations}
+            keyTimes={keyTimes}
+            dur={ctx.dur}
+            fill="freeze"
+          />
+        )}
+      </g>
+    )
+  })
 
-  return { styleSvg: '', blocksSvg }
+  return { style: '', blocks: <>{blocks}</> }
 }
 
 /**
@@ -179,41 +210,37 @@ function renderCssBlocks(
   const keyframesRules: string[] = []
   const bindingRules: string[] = []
 
-  const blocksSvg = contributions
-    .map((contribution, index) => {
-      const cls = `${fillClass(contribution.color)} g${index}`
+  const blocks = contributions.map((contribution, index) => {
+    const cls = `${fillClass(contribution.color)} g${index}`
 
-      // 帧偏移：压缩后按真实节奏换算（5 位小数避免相邻帧舍入碰撞），
-      // 未压缩时为均匀分布
-      const times = buildKeyTimesArray(contribution.trajectory)
-      const frameCount = contribution.trajectory.length
-      const fractions =
-        times ??
-        Array.from(
-          { length: frameCount },
-          (_, i) => i / Math.max(frameCount - 1, 1)
-        )
-      const offsets = fractions.map((t) => `${+(t * 100).toFixed(5)}%`)
-
-      // 每帧只写坐标变量，transform 的合成模板在公共规则；
-      // rotate 叠加在 translate 之后，绕方块中心旋转
-      keyframesRules.push(
-        `@keyframes g${index}{${contribution.trajectory
-          .map((p, i) => {
-            const rotation = ctx.isCircle
-              ? ''
-              : `;--r:${ctx.toSvgDeg(p.rotation ?? 0)}deg`
-            return `${offsets[i]}{--x:${ctx.toSvgX(p.x)}px;--y:${ctx.toSvgY(p.y)}px${rotation}}`
-          })
-          .join('')}}`
+    // 帧偏移：压缩后按真实节奏换算（5 位小数避免相邻帧舍入碰撞），
+    // 未压缩时为均匀分布
+    const times = buildKeyTimesArray(contribution.trajectory)
+    const frameCount = contribution.trajectory.length
+    const fractions =
+      times ??
+      Array.from(
+        { length: frameCount },
+        (_, i) => i / Math.max(frameCount - 1, 1)
       )
-      bindingRules.push(`.g${index}{--n:g${index}}`)
+    const offsets = fractions.map((t) => `${+(t * 100).toFixed(5)}%`)
 
-      return ctx.isCircle
-        ? `<circle class="${cls}"/>`
-        : `<rect class="${cls}"/>`
-    })
-    .join('')
+    // 每帧只写坐标变量，transform 的合成模板在公共规则；
+    // rotate 叠加在 translate 之后，绕方块中心旋转
+    keyframesRules.push(
+      `@keyframes g${index}{${contribution.trajectory
+        .map((p, i) => {
+          const rotation = ctx.isCircle
+            ? ''
+            : `;--r:${ctx.toSvgDeg(p.rotation ?? 0)}deg`
+          return `${offsets[i]}{--x:${ctx.toSvgX(p.x)}px;--y:${ctx.toSvgY(p.y)}px${rotation}}`
+        })
+        .join('')}}`
+    )
+    bindingRules.push(`.g${index}{--n:g${index}}`)
+
+    return ctx.isCircle ? <circle class={cls} /> : <rect class={cls} />
+  })
 
   // 坐标变量须注册为带类型的自定义属性才能在帧间平滑插值；方形额外注册自转角
   const cssPropertyRules = [
@@ -232,18 +259,10 @@ function renderCssBlocks(
 
   // CDATA（style 处于 XML 解析上下文，<length> 会被当标签解析）；
   // animation 默认值 = 变量注入的动画名与时长 + linear + 末帧冻结与首帧前的位置兜底
-  const styleSvg = `
-    <style><![CDATA[
-      ${cssPropertyRules}
-      :root{--dur:${ctx.dur}}
-      #b>*{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${animation}}
-      ${cssGeometryRule}
-      ${fillRules.join('')}
-      ${keyframesRules.join('')}
-      ${bindingRules.join('')}
-    ]]></style>
-  `
+  const cssRules = `<![CDATA[${cssPropertyRules}:root{--dur:${ctx.dur}}#b>*{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${animation}}${cssGeometryRule}${fillRules.join('')}${keyframesRules.join('')}${bindingRules.join('')}]]>`
+
+  const style = <style>{cssRules}</style>
 
   // 方块收进 #b 组，供公共规则命中
-  return { styleSvg, blocksSvg: `<g id="b">${blocksSvg}</g>` }
+  return { style, blocks: <g id="b">{blocks}</g> }
 }

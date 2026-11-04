@@ -28792,6 +28792,638 @@ function info(message) {
     process.stdout.write(message + os.EOL);
 }
 
+var jsxRuntime = {};
+
+var html = {};
+
+var hasRequiredHtml;
+
+function requireHtml () {
+	if (hasRequiredHtml) return html;
+	hasRequiredHtml = 1;
+	(function (exports) {
+		/// <reference path="./jsx.d.ts" />
+		/// <reference types="./suspense.d.ts" />
+		/// <reference types="./error-boundary.d.ts" />
+
+		const ESCAPED_REGEX = /[<"'&]/;
+		const CAMEL_REGEX = /[a-z][A-Z]/;
+
+		/** @type {import('.').isUpper} */
+		function isUpper(input, index) {
+		  const code = input.charCodeAt(index);
+		  return code >= 65 /* A */ && code <= 90; /* Z */
+		}
+
+		/** @type {import('.').toKebabCase} */
+		function toKebabCase(camel) {
+		  // This is a optimization to avoid the whole conversion process when the
+		  // string does not contain any uppercase characters.
+		  if (!CAMEL_REGEX.test(camel)) {
+		    return camel;
+		  }
+
+		  const length = camel.length;
+
+		  let start = 0,
+		    end = 0,
+		    kebab = '',
+		    prev = true,
+		    curr = isUpper(camel, 0),
+		    next;
+
+		  for (; end < length; end++) {
+		    next = isUpper(camel, end + 1);
+
+		    // detects the start of a new camel case word and avoid lowercasing abbreviations.
+		    if (!prev && curr && !next) {
+		      // @ts-expect-error - this indexing is safe.
+		      kebab += camel.slice(start, end) + '-' + camel[end].toLowerCase();
+		      start = end + 1;
+		    }
+
+		    prev = curr;
+		    curr = next;
+		  }
+
+		  // Appends the remaining string.
+		  kebab += camel.slice(start, end);
+
+		  return kebab;
+		}
+
+		/** @type {import('.').escape} */
+		function escape(strings, ...values) {
+		  const stringsLength = strings.length,
+		    valuesLength = values.length;
+
+		  let index = 0,
+		    result = '';
+
+		  for (; index < stringsLength; index++) {
+		    result += strings[index];
+
+		    if (index < valuesLength) {
+		      result += values[index];
+		    }
+		  }
+
+		  // Escape the entire string at once.
+		  // This is faster than escaping each piece individually.
+		  return escapeHtml(result);
+		}
+
+		/** @type {import('.').escapeHtml} */
+		let escapeHtml = function (value) {
+		  if (typeof value !== 'string') {
+		    value = value.toString();
+		  }
+
+		  // This is a optimization to avoid the whole conversion process when the
+		  // string does not contain any uppercase characters.
+		  if (!ESCAPED_REGEX.test(value)) {
+		    return value;
+		  }
+
+		  const length = value.length;
+
+		  let escaped = '',
+		    start = 0,
+		    end = 0;
+
+		  // Escapes double quotes to be used inside attributes
+		  // Faster than using regex
+		  // https://jsperf.app/kakihu
+		  for (; end < length; end++) {
+		    // https://wonko.com/post/html-escaping
+		    switch (value[end]) {
+		      case '&':
+		        escaped += value.slice(start, end) + '&amp;';
+		        start = end + 1;
+		        continue;
+		      // We don't need to escape > because it is only used to close tags.
+		      // https://stackoverflow.com/a/9189067
+		      case '<':
+		        escaped += value.slice(start, end) + '&lt;';
+		        start = end + 1;
+		        continue;
+		      case '"':
+		        escaped += value.slice(start, end) + '&#34;';
+		        start = end + 1;
+		        continue;
+		      case "'":
+		        escaped += value.slice(start, end) + '&#39;';
+		        start = end + 1;
+		        continue;
+		    }
+		  }
+
+		  // Appends the remaining string.
+		  escaped += value.slice(start, end);
+
+		  return escaped;
+		};
+
+		/* c8 ignore next 2 */
+		// @ts-ignore - bun runtime have its own escapeHTML function.
+		if (typeof Bun !== 'undefined') escapeHtml = Bun.escapeHTML;
+
+		/** @type {import('.').isVoidElement} */
+		function isVoidElement(tag) {
+		  // Ordered by most common to least common.
+		  return (
+		    tag === 'meta' ||
+		    tag === 'link' ||
+		    tag === 'img' ||
+		    tag === 'br' ||
+		    tag === 'input' ||
+		    tag === 'hr' ||
+		    tag === 'area' ||
+		    tag === 'base' ||
+		    tag === 'col' ||
+		    tag === 'command' ||
+		    tag === 'embed' ||
+		    tag === 'keygen' ||
+		    tag === 'param' ||
+		    tag === 'source' ||
+		    tag === 'track' ||
+		    tag === 'wbr'
+		  );
+		}
+
+		/** @type {import('.').styleToString} */
+		function styleToString(style) {
+		  // Faster escaping process that only looks for the " character.
+		  // As we use the " character to wrap the style string, we need to escape it.
+		  if (typeof style === 'string') {
+		    let end = style.indexOf('"');
+
+		    // This is a optimization to avoid having to look twice for the " character.
+		    // And make the loop already start in the middle
+		    if (end === -1) {
+		      return style;
+		    }
+
+		    const length = style.length;
+
+		    let escaped = '',
+		      start = 0;
+
+		    // Escapes double quotes to be used inside attributes
+		    // Faster than using regex
+		    // https://jsperf.app/kakihu
+		    for (; end < length; end++) {
+		      if (style[end] === '"') {
+		        escaped += style.slice(start, end) + '&#34;';
+		        start = end + 1;
+		      }
+		    }
+
+		    // Appends the remaining string.
+		    escaped += style.slice(start, end);
+
+		    return escaped;
+		  }
+
+		  const keys = Object.keys(style),
+		    length = keys.length;
+
+		  let key,
+		    value,
+		    end,
+		    start,
+		    index = 0,
+		    result = '';
+
+		  for (; index < length; index++) {
+		    key = keys[index];
+		    // @ts-expect-error - this indexing is safe.
+		    value = style[key];
+
+		    if (value === null || value === undefined) {
+		      continue;
+		    }
+
+		    // @ts-expect-error - this indexing is safe.
+		    result += toKebabCase(key) + ':';
+
+		    // Only needs escaping when the value is a string.
+		    if (typeof value !== 'string') {
+		      result += value.toString() + ';';
+		      continue;
+		    }
+
+		    end = value.indexOf('"');
+
+		    // This is a optimization to avoid having to look twice for the " character.
+		    // And make the loop already start in the middle
+		    if (end === -1) {
+		      result += value + ';';
+		      continue;
+		    }
+
+		    const length = value.length;
+		    start = 0;
+
+		    // Escapes double quotes to be used inside attributes
+		    // Faster than using regex
+		    // https://jsperf.app/kakihu
+		    for (; end < length; end++) {
+		      if (value[end] === '"') {
+		        result += value.slice(start, end) + '&#34;';
+		        start = end + 1;
+		      }
+		    }
+
+		    // Appends the remaining string.
+		    result += value.slice(start, end) + ';';
+		  }
+
+		  return result;
+		}
+
+		/** @type {import('.').attributesToString} */
+		function attributesToString(attributes) {
+		  const keys = Object.keys(attributes);
+		  const length = keys.length;
+
+		  let key,
+		    value,
+		    type,
+		    end,
+		    start,
+		    classItems,
+		    valueLength,
+		    result = '',
+		    index = 0;
+
+		  for (; index < length; index++) {
+		    key = keys[index];
+
+		    // Skips all @kitajs/html specific attributes.
+		    if (key === 'children' || key === 'safe' || key === 'of') {
+		      continue;
+		    }
+
+		    // @ts-expect-error - this indexing is safe.
+		    value = attributes[key];
+
+		    if (value === null || value === undefined) {
+		      continue;
+		    }
+
+		    // React className compatibility.
+		    if (key === 'className') {
+		      // @ts-expect-error - both were provided, so use the class attribute.
+		      if (attributes.class !== undefined) {
+		        continue;
+		      }
+
+		      key = 'class';
+		    } else if (key === 'class' && Array.isArray(value)) {
+		      classItems = value;
+		      valueLength = value.length;
+
+		      // Reuses the value variable
+		      value = '';
+
+		      for (let i = 0; i < valueLength; i++) {
+		        if (classItems[i] && classItems[i].length > 0) {
+		          if (value) {
+		            value += ' ' + classItems[i].trim();
+		          } else {
+		            value += classItems[i].trim();
+		          }
+		        }
+		      }
+
+		      // All attributes may have been disabled.
+		      if (value.length === 0) {
+		        continue;
+		      }
+		    } else if (key === 'style') {
+		      result += ' style="' + styleToString(value) + '"';
+		      continue;
+		    } else if (key === 'attrs') {
+		      if (typeof value === 'string') {
+		        result += ' ' + value;
+		      } else {
+		        result += attributesToString(value);
+		      }
+
+		      continue;
+		    }
+
+		    type = typeof value;
+
+		    if (type === 'boolean') {
+		      // Only add the attribute if the value is true.
+		      if (value) {
+		        result += ' ' + key;
+		      }
+
+		      continue;
+		    }
+
+		    result += ' ' + key;
+
+		    if (type !== 'string') {
+		      // Non objects are
+		      if (type !== 'object') {
+		        result += '="' + value.toString() + '"';
+		        continue;
+		      }
+
+		      // Dates are always safe
+		      if (value instanceof Date) {
+		        result += '="' + value.toISOString() + '"';
+		        continue;
+		      }
+
+		      // The object may have a overridden toString method.
+		      // Which results in a non escaped string.
+		      value = value.toString();
+		    }
+
+		    end = value.indexOf('"');
+
+		    // This is a optimization to avoid having to look twice for the " character.
+		    // And make the loop already start in the middle
+		    if (end === -1) {
+		      result += '="' + value + '"';
+		      continue;
+		    }
+
+		    result += '="';
+
+		    valueLength = value.length;
+		    start = 0;
+
+		    // Escapes double quotes to be used inside attributes
+		    // Faster than using regex
+		    // https://jsperf.app/kakihu
+		    for (; end < valueLength; end++) {
+		      if (value[end] === '"') {
+		        result += value.slice(start, end) + '&#34;';
+		        start = end + 1;
+		      }
+		    }
+
+		    // Appends the remaining string.
+		    result += value.slice(start, end) + '"';
+		  }
+
+		  return result;
+		}
+
+		/**
+		 * @type {import('.').contentsToString}
+		 * @returns {any}
+		 */
+		function contentsToString(contents, escape) {
+		  let length = contents.length;
+		  let result = '';
+
+		  for (let index = 0; index < length; index++) {
+		    const content = contents[index];
+
+		    switch (typeof content) {
+		      case 'string':
+		      case 'number':
+		      // Bigint is the only case where it differs from React.
+		      // where React renders a empty string and we render the whole number.
+		      case 'bigint':
+		        result += content;
+		        continue;
+		      case 'boolean':
+		        continue;
+		    }
+
+		    if (!content) {
+		      continue;
+		    }
+
+		    if (Array.isArray(content)) {
+		      contents.splice(index--, 1, ...content);
+		      length += content.length - 1;
+		      continue;
+		    }
+
+		    if (typeof content.then === 'function') {
+		      // @ts-ignore - Type instantiation is excessively deep and possibly infinite.
+		      return Promise.all(contents.slice(index)).then(function resolveContents(resolved) {
+		        resolved.unshift(result);
+		        return contentsToString(resolved, escape);
+		      });
+		    }
+
+		    throw new Error('Objects are not valid as a KitaJSX child');
+		  }
+
+		  // escapeHtml is faster with longer strings, that's
+		  // why we escape the entire result once
+		  if (escape === true) {
+		    return escapeHtml(result);
+		  }
+
+		  return result;
+		}
+
+		/**
+		 * @param {import('./index').Children} content
+		 * @param {boolean} safe
+		 * @returns {JSX.Element}
+		 */
+		function contentToString(content, safe) {
+		  switch (typeof content) {
+		    case 'string':
+		      return safe ? escapeHtml(content) : content;
+		    case 'number':
+		    // Bigint is the only case where it differs from React.
+		    // where React renders a empty string and we render the whole number.
+		    case 'bigint':
+		      return content.toString();
+		    case 'boolean':
+		      return '';
+		  }
+
+		  if (!content) {
+		    return '';
+		  }
+
+		  if (Array.isArray(content)) {
+		    return contentsToString(content, safe);
+		  }
+
+		  if (typeof content.then === 'function') {
+		    return content.then(function resolveContent(resolved) {
+		      return contentToString(resolved, safe);
+		    });
+		  }
+
+		  throw new Error('Objects are not valid as a KitaJSX child');
+		}
+
+		/**
+		 * Just to stop TS from complaining about the type.
+		 *
+		 * @type {import('.').createElement}
+		 * @param {any} name
+		 * @returns {any}
+		 */
+		function createElement(name, attrs, ...children) {
+		  const hasAttrs = attrs !== null;
+
+		  // Calls the element creator function if the name is a function
+		  if (typeof name === 'function') {
+		    // We at least need to pass the children to the function component. We may receive null if this
+		    // component was called without any children.
+		    if (!hasAttrs) {
+		      return name({ children: children.length > 1 ? children : children[0] });
+		    }
+
+		    attrs.children = children.length > 1 ? children : children[0];
+		    return name(attrs);
+		  }
+
+		  // Switches the tag name when this custom `tag` is present.
+		  if (hasAttrs && name === 'tag') {
+		    name = /** @type {string} */ (attrs.of);
+		  }
+
+		  const attributes = hasAttrs ? attributesToString(attrs) : '';
+
+		  if (children.length === 0) {
+		    return isVoidElement(name)
+		      ? '<' + name + attributes + '/>'
+		      : '<' + name + attributes + '></' + name + '>';
+		  }
+
+		  const contents = contentsToString(children, hasAttrs && attrs.safe);
+
+		  if (typeof contents === 'string') {
+		    return '<' + name + attributes + '>' + contents + '</' + name + '>';
+		  }
+
+		  return contents.then(function resolveContents(contents) {
+		    return '<' + name + attributes + '>' + contents + '</' + name + '>';
+		  });
+		}
+
+		/** @type {import('.').Fragment} */
+		function Fragment(props) {
+		  return contentsToString([props.children]);
+		}
+
+		exports.escape = escape;
+		exports.e = escape;
+		exports.escapeHtml = escapeHtml;
+		exports.isVoidElement = isVoidElement;
+		exports.attributesToString = attributesToString;
+		exports.toKebabCase = toKebabCase;
+		exports.isUpper = isUpper;
+		exports.styleToString = styleToString;
+		exports.createElement = createElement;
+		exports.h = createElement;
+		exports.contentsToString = contentsToString;
+		exports.contentToString = contentToString;
+		exports.Fragment = Fragment;
+		//@ts-expect-error - global augmentation
+		exports.Html = { ...exports }; 
+	} (html));
+	return html;
+}
+
+var hasRequiredJsxRuntime;
+
+function requireJsxRuntime () {
+	if (hasRequiredJsxRuntime) return jsxRuntime;
+	hasRequiredJsxRuntime = 1;
+	/// <reference path="./jsx.d.ts" />
+	/// <reference types="./suspense.d.ts" />
+	/// <reference types="./error-boundary.d.ts" />
+
+	const {
+	  Fragment,
+	  attributesToString,
+	  isVoidElement,
+	  contentsToString,
+	  contentToString
+	} = /*@__PURE__*/ requireHtml();
+
+	/** @type {import('./jsx-runtime').jsx} */
+	function jsx(name, attrs) {
+	  // Calls the element creator function if the name is a function
+	  if (typeof name === 'function') {
+	    return name(attrs);
+	  }
+
+	  // Switches the tag name when this custom `tag` is present.
+	  if (name === 'tag') {
+	    name = /** @type {string} */ (attrs.of);
+	  }
+
+	  const attributes = attributesToString(attrs);
+
+	  if (attrs.children === undefined) {
+	    return isVoidElement(name)
+	      ? '<' + name + attributes + '/>'
+	      : '<' + name + attributes + '></' + name + '>';
+	  }
+
+	  const contents = contentToString(attrs.children, attrs.safe);
+
+	  if (contents instanceof Promise) {
+	    return contents.then(function resolveContents(child) {
+	      return '<' + name + attributes + '>' + child + '</' + name + '>';
+	    });
+	  }
+
+	  return '<' + name + attributes + '>' + contents + '</' + name + '>';
+	}
+
+	/** @type {import('./jsx-runtime').jsxs} */
+	function jsxs(name, attrs) {
+	  // Calls the element creator function if the name is a function
+	  if (typeof name === 'function') {
+	    return name(attrs);
+	  }
+
+	  // Switches the tag name when this custom `tag` is present.
+	  if (name === 'tag') {
+	    name = /** @type {string} */ (attrs.of);
+	  }
+
+	  const attributes = attributesToString(attrs);
+
+	  if (attrs.children.length === 0) {
+	    return isVoidElement(name)
+	      ? '<' + name + attributes + '/>'
+	      : '<' + name + attributes + '></' + name + '>';
+	  }
+
+	  const contents = contentsToString(attrs.children, attrs.safe);
+
+	  if (contents instanceof Promise) {
+	    return contents.then(function resolveContents(child) {
+	      return '<' + name + attributes + '>' + child + '</' + name + '>';
+	    });
+	  }
+
+	  return '<' + name + attributes + '>' + contents + '</' + name + '>';
+	}
+
+	jsxRuntime.jsx = jsx;
+	jsxRuntime.jsxs = jsxs;
+	// According to the jsx-runtime spec we must export the fragment element also
+	jsxRuntime.Fragment = Fragment;
+	return jsxRuntime;
+}
+
+var jsxRuntimeExports = /*@__PURE__*/ requireJsxRuntime();
+
+var htmlExports = /*@__PURE__*/ requireHtml();
+
 const SCALE = 1;
 /** 固定物理步长（秒） */
 const TIMESTEP = 1 / 30;
@@ -46593,12 +47225,13 @@ async function startSimulation(options) {
 }
 
 /**
- * 去掉换行与行首缩进，把缩进排版的多行模板压缩成紧凑输出。
- * 仅当所有文本内容都位于属性值或 CDATA 内（且值本身不含换行）时安全——
- * 本文件生成的标记满足该约束。
+ * 包裹含空元素的 SVG 片段，把空元素折回自闭合形式：
+ * @kitajs/html 只为 HTML void 标签输出 <tag/>，SVG 空元素会被展开成
+ * <circle></circle>。本文件渲染出的这几种元素恒无子节点。
  */
-function minifySvg(svg) {
-    return svg.replace(/\n\s*/g, '');
+async function SelfClosed({ children }) {
+    const markup = await htmlExports.contentsToString([children]);
+    return markup.replace(/><\/(circle|rect|path|animateTransform)>/g, '/>');
 }
 /**
  * 生成贡献方块重力模拟的 SVG 动画字符串。
@@ -46625,62 +47258,33 @@ async function gensvg(options) {
         toSvgDeg: (rotation) => +((-(rotation ?? 0) * 180) / Math.PI).toFixed(2)
     };
     // 双引擎派发：各自生成方块组与 style 片段
-    const { styleSvg, blocksSvg } = op.css
+    const { style, blocks } = op.css
         ? renderCssBlocks(result.contributions, ctx, op.animation)
         : renderSmilBlocks(result.contributions, ctx);
-    // 用 path 渲染文字路径，与物理碰撞体坐标对齐
-    // opentype 坐标 → SVG 坐标: svgX = (opentypeX + offsetX) * SCALE, svgY = (height - centerY + opentypeY) * SCALE
-    const textPathsSvg = result.textPaths
-        .map(({ pathData }) => `<path d="${pathData}" fill="${op.textColor}"/>`)
-        .join('');
-    const textGroupSvg = `
-    <g transform="translate(${result.offsetX * SCALE}, ${(op.height - result.centerY) * SCALE}) scale(${SCALE})">
-      ${textPathsSvg}
-    </g>
-  `;
-    return minifySvg(`
-    <svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth * op.scale}" height="${svgHeight * op.scale}" viewBox="0 0 ${svgWidth} ${svgHeight}">
-      ${styleSvg}
-      <rect width="${svgWidth}" height="${svgHeight}" fill="${op.backgroundColor}"/>
-      ${blocksSvg}
-      ${textGroupSvg}
-    </svg>
-  `);
+    // 含空元素的片段各自经 SelfClosed 折叠，根节点只做装配
+    return await (jsxRuntimeExports.jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", width: svgWidth * op.scale, height: svgHeight * op.scale, viewBox: `0 0 ${svgWidth} ${svgHeight}`, children: [style, jsxRuntimeExports.jsx(SelfClosed, { children: jsxRuntimeExports.jsx("rect", { width: svgWidth, height: svgHeight, fill: op.backgroundColor }) }), jsxRuntimeExports.jsx(SelfClosed, { children: blocks }), jsxRuntimeExports.jsx(SelfClosed, { children: jsxRuntimeExports.jsx("g", { transform: `translate(${result.offsetX * SCALE}, ${(op.height - result.centerY) * SCALE}) scale(${SCALE})`, children: result.textPaths.map(({ pathData }) => (jsxRuntimeExports.jsx("path", { d: pathData, fill: op.textColor }))) }) })] }));
 }
 /**
  * SMIL 引擎：每个方块自带 animateTransform，轨迹写进 values，
  * 不依赖 CSS，兼容最广的 SVG 渲染环境。
  */
 function renderSmilBlocks(contributions, ctx) {
-    const blocksSvg = contributions
-        .map((contribution) => {
-        const shapeElement = ctx.isCircle
-            ? `<circle r="${ctx.halfSizePx}" fill="${contribution.color}"/>`
-            : `<rect x="${-ctx.halfSizePx}" y="${-ctx.halfSizePx}" width="${ctx.sizePx}" height="${ctx.sizePx}" fill="${contribution.color}"/>`;
+    const blocks = contributions.map((contribution) => {
+        const shape = ctx.isCircle ? (jsxRuntimeExports.jsx("circle", { r: ctx.halfSizePx, fill: contribution.color })) : (jsxRuntimeExports.jsx("rect", { x: -ctx.halfSizePx, y: -ctx.halfSizePx, width: ctx.sizePx, height: ctx.sizePx, fill: contribution.color }));
         const values = contribution.trajectory
             .map(({ x, y }) => `${ctx.toSvgX(x)},${ctx.toSvgY(y)}`)
             .join(';');
         // 开启压缩后各段时间跨度不同，需要 keyTimes 还原真实节奏；未压缩时为 null，走 SMIL 默认均分
         const keyTimes = buildKeyTimes(contribution.trajectory);
-        const keyTimesAttr = keyTimes ? ` keyTimes="${keyTimes}"` : '';
         // 方形轨迹携带自转角：叠加在平移之后，绕方块中心旋转
         const rotations = ctx.isCircle
             ? ''
             : contribution.trajectory
                 .map(({ rotation }) => ctx.toSvgDeg(rotation ?? 0))
                 .join(';');
-        const rotateAnim = rotations
-            ? `<animateTransform attributeName="transform" attributeType="XML" type="rotate" additive="sum" values="${rotations}"${keyTimesAttr} dur="${ctx.dur}" fill="freeze"/>`
-            : '';
-        return `
-        <g data-date="${contribution.date}">
-          ${shapeElement}
-          <animateTransform attributeName="transform" attributeType="XML" type="translate" values="${values}"${keyTimesAttr} dur="${ctx.dur}" fill="freeze"/>
-          ${rotateAnim}
-        </g>`;
-    })
-        .join('');
-    return { styleSvg: '', blocksSvg };
+        return (jsxRuntimeExports.jsxs("g", { "data-date": contribution.date, children: [shape, jsxRuntimeExports.jsx("animateTransform", { attributeName: "transform", attributeType: "XML", type: "translate", values: values, keyTimes: keyTimes, dur: ctx.dur, fill: "freeze" }), rotations && (jsxRuntimeExports.jsx("animateTransform", { attributeName: "transform", attributeType: "XML", type: "rotate", additive: "sum", values: rotations, keyTimes: keyTimes, dur: ctx.dur, fill: "freeze" }))] }));
+    });
+    return { style: '', blocks: jsxRuntimeExports.jsx(jsxRuntimeExports.Fragment, { children: blocks }) };
 }
 /**
  * CSS 引擎：方块只携带「颜色 + 动画名」两个 class，轨迹写进 @keyframes 帧变量，
@@ -46706,8 +47310,7 @@ function renderCssBlocks(contributions, ctx, animation) {
     };
     const keyframesRules = [];
     const bindingRules = [];
-    const blocksSvg = contributions
-        .map((contribution, index) => {
+    const blocks = contributions.map((contribution, index) => {
         const cls = `${fillClass(contribution.color)} g${index}`;
         // 帧偏移：压缩后按真实节奏换算（5 位小数避免相邻帧舍入碰撞），
         // 未压缩时为均匀分布
@@ -46727,11 +47330,8 @@ function renderCssBlocks(contributions, ctx, animation) {
         })
             .join('')}}`);
         bindingRules.push(`.g${index}{--n:g${index}}`);
-        return ctx.isCircle
-            ? `<circle class="${cls}"/>`
-            : `<rect class="${cls}"/>`;
-    })
-        .join('');
+        return ctx.isCircle ? jsxRuntimeExports.jsx("circle", { class: cls }) : jsxRuntimeExports.jsx("rect", { class: cls });
+    });
     // 坐标变量须注册为带类型的自定义属性才能在帧间平滑插值；方形额外注册自转角
     const cssPropertyRules = [
         `@property --x{syntax:"<length>";inherits:false;initial-value:0px}`,
@@ -46747,19 +47347,10 @@ function renderCssBlocks(contributions, ctx, animation) {
         : `#b>rect{x:${-ctx.halfSizePx}px;y:${-ctx.halfSizePx}px;width:${ctx.sizePx}px;height:${ctx.sizePx}px}`;
     // CDATA（style 处于 XML 解析上下文，<length> 会被当标签解析）；
     // animation 默认值 = 变量注入的动画名与时长 + linear + 末帧冻结与首帧前的位置兜底
-    const styleSvg = `
-    <style><![CDATA[
-      ${cssPropertyRules}
-      :root{--dur:${ctx.dur}}
-      #b>*{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${animation}}
-      ${cssGeometryRule}
-      ${fillRules.join('')}
-      ${keyframesRules.join('')}
-      ${bindingRules.join('')}
-    ]]></style>
-  `;
+    const cssRules = `<![CDATA[${cssPropertyRules}:root{--dur:${ctx.dur}}#b>*{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${animation}}${cssGeometryRule}${fillRules.join('')}${keyframesRules.join('')}${bindingRules.join('')}]]>`;
+    const style = jsxRuntimeExports.jsx("style", { children: cssRules });
     // 方块收进 #b 组，供公共规则命中
-    return { styleSvg, blocksSvg: `<g id="b">${blocksSvg}</g>` };
+    return { style, blocks: jsxRuntimeExports.jsx("g", { id: "b", children: blocks }) };
 }
 
 /** 读取可选数字输入，未填写时返回 undefined，由库使用默认值 */
