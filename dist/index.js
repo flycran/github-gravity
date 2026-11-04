@@ -28792,6 +28792,638 @@ function info(message) {
     process.stdout.write(message + os.EOL);
 }
 
+var jsxRuntime = {};
+
+var html = {};
+
+var hasRequiredHtml;
+
+function requireHtml () {
+	if (hasRequiredHtml) return html;
+	hasRequiredHtml = 1;
+	(function (exports) {
+		/// <reference path="./jsx.d.ts" />
+		/// <reference types="./suspense.d.ts" />
+		/// <reference types="./error-boundary.d.ts" />
+
+		const ESCAPED_REGEX = /[<"'&]/;
+		const CAMEL_REGEX = /[a-z][A-Z]/;
+
+		/** @type {import('.').isUpper} */
+		function isUpper(input, index) {
+		  const code = input.charCodeAt(index);
+		  return code >= 65 /* A */ && code <= 90; /* Z */
+		}
+
+		/** @type {import('.').toKebabCase} */
+		function toKebabCase(camel) {
+		  // This is a optimization to avoid the whole conversion process when the
+		  // string does not contain any uppercase characters.
+		  if (!CAMEL_REGEX.test(camel)) {
+		    return camel;
+		  }
+
+		  const length = camel.length;
+
+		  let start = 0,
+		    end = 0,
+		    kebab = '',
+		    prev = true,
+		    curr = isUpper(camel, 0),
+		    next;
+
+		  for (; end < length; end++) {
+		    next = isUpper(camel, end + 1);
+
+		    // detects the start of a new camel case word and avoid lowercasing abbreviations.
+		    if (!prev && curr && !next) {
+		      // @ts-expect-error - this indexing is safe.
+		      kebab += camel.slice(start, end) + '-' + camel[end].toLowerCase();
+		      start = end + 1;
+		    }
+
+		    prev = curr;
+		    curr = next;
+		  }
+
+		  // Appends the remaining string.
+		  kebab += camel.slice(start, end);
+
+		  return kebab;
+		}
+
+		/** @type {import('.').escape} */
+		function escape(strings, ...values) {
+		  const stringsLength = strings.length,
+		    valuesLength = values.length;
+
+		  let index = 0,
+		    result = '';
+
+		  for (; index < stringsLength; index++) {
+		    result += strings[index];
+
+		    if (index < valuesLength) {
+		      result += values[index];
+		    }
+		  }
+
+		  // Escape the entire string at once.
+		  // This is faster than escaping each piece individually.
+		  return escapeHtml(result);
+		}
+
+		/** @type {import('.').escapeHtml} */
+		let escapeHtml = function (value) {
+		  if (typeof value !== 'string') {
+		    value = value.toString();
+		  }
+
+		  // This is a optimization to avoid the whole conversion process when the
+		  // string does not contain any uppercase characters.
+		  if (!ESCAPED_REGEX.test(value)) {
+		    return value;
+		  }
+
+		  const length = value.length;
+
+		  let escaped = '',
+		    start = 0,
+		    end = 0;
+
+		  // Escapes double quotes to be used inside attributes
+		  // Faster than using regex
+		  // https://jsperf.app/kakihu
+		  for (; end < length; end++) {
+		    // https://wonko.com/post/html-escaping
+		    switch (value[end]) {
+		      case '&':
+		        escaped += value.slice(start, end) + '&amp;';
+		        start = end + 1;
+		        continue;
+		      // We don't need to escape > because it is only used to close tags.
+		      // https://stackoverflow.com/a/9189067
+		      case '<':
+		        escaped += value.slice(start, end) + '&lt;';
+		        start = end + 1;
+		        continue;
+		      case '"':
+		        escaped += value.slice(start, end) + '&#34;';
+		        start = end + 1;
+		        continue;
+		      case "'":
+		        escaped += value.slice(start, end) + '&#39;';
+		        start = end + 1;
+		        continue;
+		    }
+		  }
+
+		  // Appends the remaining string.
+		  escaped += value.slice(start, end);
+
+		  return escaped;
+		};
+
+		/* c8 ignore next 2 */
+		// @ts-ignore - bun runtime have its own escapeHTML function.
+		if (typeof Bun !== 'undefined') escapeHtml = Bun.escapeHTML;
+
+		/** @type {import('.').isVoidElement} */
+		function isVoidElement(tag) {
+		  // Ordered by most common to least common.
+		  return (
+		    tag === 'meta' ||
+		    tag === 'link' ||
+		    tag === 'img' ||
+		    tag === 'br' ||
+		    tag === 'input' ||
+		    tag === 'hr' ||
+		    tag === 'area' ||
+		    tag === 'base' ||
+		    tag === 'col' ||
+		    tag === 'command' ||
+		    tag === 'embed' ||
+		    tag === 'keygen' ||
+		    tag === 'param' ||
+		    tag === 'source' ||
+		    tag === 'track' ||
+		    tag === 'wbr'
+		  );
+		}
+
+		/** @type {import('.').styleToString} */
+		function styleToString(style) {
+		  // Faster escaping process that only looks for the " character.
+		  // As we use the " character to wrap the style string, we need to escape it.
+		  if (typeof style === 'string') {
+		    let end = style.indexOf('"');
+
+		    // This is a optimization to avoid having to look twice for the " character.
+		    // And make the loop already start in the middle
+		    if (end === -1) {
+		      return style;
+		    }
+
+		    const length = style.length;
+
+		    let escaped = '',
+		      start = 0;
+
+		    // Escapes double quotes to be used inside attributes
+		    // Faster than using regex
+		    // https://jsperf.app/kakihu
+		    for (; end < length; end++) {
+		      if (style[end] === '"') {
+		        escaped += style.slice(start, end) + '&#34;';
+		        start = end + 1;
+		      }
+		    }
+
+		    // Appends the remaining string.
+		    escaped += style.slice(start, end);
+
+		    return escaped;
+		  }
+
+		  const keys = Object.keys(style),
+		    length = keys.length;
+
+		  let key,
+		    value,
+		    end,
+		    start,
+		    index = 0,
+		    result = '';
+
+		  for (; index < length; index++) {
+		    key = keys[index];
+		    // @ts-expect-error - this indexing is safe.
+		    value = style[key];
+
+		    if (value === null || value === undefined) {
+		      continue;
+		    }
+
+		    // @ts-expect-error - this indexing is safe.
+		    result += toKebabCase(key) + ':';
+
+		    // Only needs escaping when the value is a string.
+		    if (typeof value !== 'string') {
+		      result += value.toString() + ';';
+		      continue;
+		    }
+
+		    end = value.indexOf('"');
+
+		    // This is a optimization to avoid having to look twice for the " character.
+		    // And make the loop already start in the middle
+		    if (end === -1) {
+		      result += value + ';';
+		      continue;
+		    }
+
+		    const length = value.length;
+		    start = 0;
+
+		    // Escapes double quotes to be used inside attributes
+		    // Faster than using regex
+		    // https://jsperf.app/kakihu
+		    for (; end < length; end++) {
+		      if (value[end] === '"') {
+		        result += value.slice(start, end) + '&#34;';
+		        start = end + 1;
+		      }
+		    }
+
+		    // Appends the remaining string.
+		    result += value.slice(start, end) + ';';
+		  }
+
+		  return result;
+		}
+
+		/** @type {import('.').attributesToString} */
+		function attributesToString(attributes) {
+		  const keys = Object.keys(attributes);
+		  const length = keys.length;
+
+		  let key,
+		    value,
+		    type,
+		    end,
+		    start,
+		    classItems,
+		    valueLength,
+		    result = '',
+		    index = 0;
+
+		  for (; index < length; index++) {
+		    key = keys[index];
+
+		    // Skips all @kitajs/html specific attributes.
+		    if (key === 'children' || key === 'safe' || key === 'of') {
+		      continue;
+		    }
+
+		    // @ts-expect-error - this indexing is safe.
+		    value = attributes[key];
+
+		    if (value === null || value === undefined) {
+		      continue;
+		    }
+
+		    // React className compatibility.
+		    if (key === 'className') {
+		      // @ts-expect-error - both were provided, so use the class attribute.
+		      if (attributes.class !== undefined) {
+		        continue;
+		      }
+
+		      key = 'class';
+		    } else if (key === 'class' && Array.isArray(value)) {
+		      classItems = value;
+		      valueLength = value.length;
+
+		      // Reuses the value variable
+		      value = '';
+
+		      for (let i = 0; i < valueLength; i++) {
+		        if (classItems[i] && classItems[i].length > 0) {
+		          if (value) {
+		            value += ' ' + classItems[i].trim();
+		          } else {
+		            value += classItems[i].trim();
+		          }
+		        }
+		      }
+
+		      // All attributes may have been disabled.
+		      if (value.length === 0) {
+		        continue;
+		      }
+		    } else if (key === 'style') {
+		      result += ' style="' + styleToString(value) + '"';
+		      continue;
+		    } else if (key === 'attrs') {
+		      if (typeof value === 'string') {
+		        result += ' ' + value;
+		      } else {
+		        result += attributesToString(value);
+		      }
+
+		      continue;
+		    }
+
+		    type = typeof value;
+
+		    if (type === 'boolean') {
+		      // Only add the attribute if the value is true.
+		      if (value) {
+		        result += ' ' + key;
+		      }
+
+		      continue;
+		    }
+
+		    result += ' ' + key;
+
+		    if (type !== 'string') {
+		      // Non objects are
+		      if (type !== 'object') {
+		        result += '="' + value.toString() + '"';
+		        continue;
+		      }
+
+		      // Dates are always safe
+		      if (value instanceof Date) {
+		        result += '="' + value.toISOString() + '"';
+		        continue;
+		      }
+
+		      // The object may have a overridden toString method.
+		      // Which results in a non escaped string.
+		      value = value.toString();
+		    }
+
+		    end = value.indexOf('"');
+
+		    // This is a optimization to avoid having to look twice for the " character.
+		    // And make the loop already start in the middle
+		    if (end === -1) {
+		      result += '="' + value + '"';
+		      continue;
+		    }
+
+		    result += '="';
+
+		    valueLength = value.length;
+		    start = 0;
+
+		    // Escapes double quotes to be used inside attributes
+		    // Faster than using regex
+		    // https://jsperf.app/kakihu
+		    for (; end < valueLength; end++) {
+		      if (value[end] === '"') {
+		        result += value.slice(start, end) + '&#34;';
+		        start = end + 1;
+		      }
+		    }
+
+		    // Appends the remaining string.
+		    result += value.slice(start, end) + '"';
+		  }
+
+		  return result;
+		}
+
+		/**
+		 * @type {import('.').contentsToString}
+		 * @returns {any}
+		 */
+		function contentsToString(contents, escape) {
+		  let length = contents.length;
+		  let result = '';
+
+		  for (let index = 0; index < length; index++) {
+		    const content = contents[index];
+
+		    switch (typeof content) {
+		      case 'string':
+		      case 'number':
+		      // Bigint is the only case where it differs from React.
+		      // where React renders a empty string and we render the whole number.
+		      case 'bigint':
+		        result += content;
+		        continue;
+		      case 'boolean':
+		        continue;
+		    }
+
+		    if (!content) {
+		      continue;
+		    }
+
+		    if (Array.isArray(content)) {
+		      contents.splice(index--, 1, ...content);
+		      length += content.length - 1;
+		      continue;
+		    }
+
+		    if (typeof content.then === 'function') {
+		      // @ts-ignore - Type instantiation is excessively deep and possibly infinite.
+		      return Promise.all(contents.slice(index)).then(function resolveContents(resolved) {
+		        resolved.unshift(result);
+		        return contentsToString(resolved, escape);
+		      });
+		    }
+
+		    throw new Error('Objects are not valid as a KitaJSX child');
+		  }
+
+		  // escapeHtml is faster with longer strings, that's
+		  // why we escape the entire result once
+		  if (escape === true) {
+		    return escapeHtml(result);
+		  }
+
+		  return result;
+		}
+
+		/**
+		 * @param {import('./index').Children} content
+		 * @param {boolean} safe
+		 * @returns {JSX.Element}
+		 */
+		function contentToString(content, safe) {
+		  switch (typeof content) {
+		    case 'string':
+		      return safe ? escapeHtml(content) : content;
+		    case 'number':
+		    // Bigint is the only case where it differs from React.
+		    // where React renders a empty string and we render the whole number.
+		    case 'bigint':
+		      return content.toString();
+		    case 'boolean':
+		      return '';
+		  }
+
+		  if (!content) {
+		    return '';
+		  }
+
+		  if (Array.isArray(content)) {
+		    return contentsToString(content, safe);
+		  }
+
+		  if (typeof content.then === 'function') {
+		    return content.then(function resolveContent(resolved) {
+		      return contentToString(resolved, safe);
+		    });
+		  }
+
+		  throw new Error('Objects are not valid as a KitaJSX child');
+		}
+
+		/**
+		 * Just to stop TS from complaining about the type.
+		 *
+		 * @type {import('.').createElement}
+		 * @param {any} name
+		 * @returns {any}
+		 */
+		function createElement(name, attrs, ...children) {
+		  const hasAttrs = attrs !== null;
+
+		  // Calls the element creator function if the name is a function
+		  if (typeof name === 'function') {
+		    // We at least need to pass the children to the function component. We may receive null if this
+		    // component was called without any children.
+		    if (!hasAttrs) {
+		      return name({ children: children.length > 1 ? children : children[0] });
+		    }
+
+		    attrs.children = children.length > 1 ? children : children[0];
+		    return name(attrs);
+		  }
+
+		  // Switches the tag name when this custom `tag` is present.
+		  if (hasAttrs && name === 'tag') {
+		    name = /** @type {string} */ (attrs.of);
+		  }
+
+		  const attributes = hasAttrs ? attributesToString(attrs) : '';
+
+		  if (children.length === 0) {
+		    return isVoidElement(name)
+		      ? '<' + name + attributes + '/>'
+		      : '<' + name + attributes + '></' + name + '>';
+		  }
+
+		  const contents = contentsToString(children, hasAttrs && attrs.safe);
+
+		  if (typeof contents === 'string') {
+		    return '<' + name + attributes + '>' + contents + '</' + name + '>';
+		  }
+
+		  return contents.then(function resolveContents(contents) {
+		    return '<' + name + attributes + '>' + contents + '</' + name + '>';
+		  });
+		}
+
+		/** @type {import('.').Fragment} */
+		function Fragment(props) {
+		  return contentsToString([props.children]);
+		}
+
+		exports.escape = escape;
+		exports.e = escape;
+		exports.escapeHtml = escapeHtml;
+		exports.isVoidElement = isVoidElement;
+		exports.attributesToString = attributesToString;
+		exports.toKebabCase = toKebabCase;
+		exports.isUpper = isUpper;
+		exports.styleToString = styleToString;
+		exports.createElement = createElement;
+		exports.h = createElement;
+		exports.contentsToString = contentsToString;
+		exports.contentToString = contentToString;
+		exports.Fragment = Fragment;
+		//@ts-expect-error - global augmentation
+		exports.Html = { ...exports }; 
+	} (html));
+	return html;
+}
+
+var hasRequiredJsxRuntime;
+
+function requireJsxRuntime () {
+	if (hasRequiredJsxRuntime) return jsxRuntime;
+	hasRequiredJsxRuntime = 1;
+	/// <reference path="./jsx.d.ts" />
+	/// <reference types="./suspense.d.ts" />
+	/// <reference types="./error-boundary.d.ts" />
+
+	const {
+	  Fragment,
+	  attributesToString,
+	  isVoidElement,
+	  contentsToString,
+	  contentToString
+	} = /*@__PURE__*/ requireHtml();
+
+	/** @type {import('./jsx-runtime').jsx} */
+	function jsx(name, attrs) {
+	  // Calls the element creator function if the name is a function
+	  if (typeof name === 'function') {
+	    return name(attrs);
+	  }
+
+	  // Switches the tag name when this custom `tag` is present.
+	  if (name === 'tag') {
+	    name = /** @type {string} */ (attrs.of);
+	  }
+
+	  const attributes = attributesToString(attrs);
+
+	  if (attrs.children === undefined) {
+	    return isVoidElement(name)
+	      ? '<' + name + attributes + '/>'
+	      : '<' + name + attributes + '></' + name + '>';
+	  }
+
+	  const contents = contentToString(attrs.children, attrs.safe);
+
+	  if (contents instanceof Promise) {
+	    return contents.then(function resolveContents(child) {
+	      return '<' + name + attributes + '>' + child + '</' + name + '>';
+	    });
+	  }
+
+	  return '<' + name + attributes + '>' + contents + '</' + name + '>';
+	}
+
+	/** @type {import('./jsx-runtime').jsxs} */
+	function jsxs(name, attrs) {
+	  // Calls the element creator function if the name is a function
+	  if (typeof name === 'function') {
+	    return name(attrs);
+	  }
+
+	  // Switches the tag name when this custom `tag` is present.
+	  if (name === 'tag') {
+	    name = /** @type {string} */ (attrs.of);
+	  }
+
+	  const attributes = attributesToString(attrs);
+
+	  if (attrs.children.length === 0) {
+	    return isVoidElement(name)
+	      ? '<' + name + attributes + '/>'
+	      : '<' + name + attributes + '></' + name + '>';
+	  }
+
+	  const contents = contentsToString(attrs.children, attrs.safe);
+
+	  if (contents instanceof Promise) {
+	    return contents.then(function resolveContents(child) {
+	      return '<' + name + attributes + '>' + child + '</' + name + '>';
+	    });
+	  }
+
+	  return '<' + name + attributes + '>' + contents + '</' + name + '>';
+	}
+
+	jsxRuntime.jsx = jsx;
+	jsxRuntime.jsxs = jsxs;
+	// According to the jsx-runtime spec we must export the fragment element also
+	jsxRuntime.Fragment = Fragment;
+	return jsxRuntime;
+}
+
+var jsxRuntimeExports = /*@__PURE__*/ requireJsxRuntime();
+
+var htmlExports = /*@__PURE__*/ requireHtml();
+
 const SCALE = 1;
 /** 固定物理步长（秒） */
 const TIMESTEP = 1 / 30;
@@ -46094,27 +46726,86 @@ function describeFont(font) {
 }
 
 /**
- * 通道化轨迹压缩。
- *
- * 轨迹由独立标量通道组成：x、y 与自转角，每个通道按自己的容差独立分段——
- * 垂直下落中几乎恒定的 x 通道收缩为两个关键帧并可在消费端折叠为静态值，
- * 主导运动的 y 通道不受影响；旋转剧变也只有旋转通道加密。各通道时间轴互不
- * 相同，消费端按各自的 span 还原节奏。
- *
- * 另提供联合位置表达（joint）：x、y 共享时间轴、以欧氏偏差为约束。分轴划分
- * 的折点时刻错开时，联合表达的帧数更少，供只能消费 "x,y" 绑定的引擎（SMIL
- * translate）使用。
+ * 点 i 相对段 (s, e) 的时刻插值偏差平方。
+ * 播放时相邻关键帧按时间比例线性插值，该值即 i 时刻的插值位置与真实位置的距离平方。
+ * 度量含时间维：匀速直线段可整体并段，变速段会自动保留关键帧，速度随位置一同保真。
  */
+function deviationSq(p, s, e, t) {
+    const dx = p.x - (s.x + (e.x - s.x) * t);
+    const dy = p.y - (s.y + (e.y - s.y) * t);
+    return dx * dx + dy * dy;
+}
+/**
+ * 点 i 相对段 (s, e) 的自转角插值误差（弧度）。轨迹已解缠绕保持连续，
+ * 与位置共用同一套时间插值，maxRotationError > 0 时作为独立约束参与段可行性判断；
+ * 轨迹不带 rotation 时恒为 0，不影响位置度量。
+ */
+function rotationError(p, s, e, t) {
+    const dr = (p.rotation ?? 0) -
+        ((s.rotation ?? 0) + ((e.rotation ?? 0) - (s.rotation ?? 0)) * t);
+    return Math.abs(dr);
+}
+/**
+ * 段 (s, e) 内各点的最大时刻插值偏差平方，与 limitSq 比较可全程避免开方。
+ * 位置或角度任一维度超限立即返回 Infinity（提前终止，长不可行段的开销为常数级）。
+ */
+function segmentMaxDeviationSq(trajectory, s, e, limitSq, maxRotationError) {
+    let max = 0;
+    const denom = e - s;
+    for (let i = s + 1; i < e; i++) {
+        const t = (i - s) / denom;
+        const d = deviationSq(trajectory[i], trajectory[s], trajectory[e], t);
+        if (d > limitSq)
+            return Infinity;
+        if (maxRotationError > 0 &&
+            rotationError(trajectory[i], trajectory[s], trajectory[e], t) >
+                maxRotationError) {
+            return Infinity;
+        }
+        if (d > max)
+            max = d;
+    }
+    return max;
+}
 function assertTolerance(tolerance) {
     if (tolerance < 0) {
         throw new Error(`tolerance must be >= 0, got ${tolerance}`);
     }
 }
+/** 把保留标记转为输出：保序，span 为相邻保留点的原始索引差 */
+function collectResult(trajectory, keep) {
+    const result = [];
+    let prevIdx = 0;
+    for (let i = 0; i < keep.length; i++) {
+        if (!keep[i])
+            continue;
+        result.push({ ...trajectory[i], span: i - prevIdx });
+        prevIdx = i;
+    }
+    return result;
+}
 /**
- * 动态规划最优分段：在可行性约束下求关键帧数全局最少的分段
- * （等价于 Imai–Iri 最优分段问题的 DP 解法）
+ * 轨迹压缩——动态规划最优分段：
+ * 在"每个原始点的时刻插值偏差都不超过 tolerance"的约束下，
+ * 求关键帧数全局最少的分段（等价于 Imai–Iri 最优分段问题的 DP 解法）。
+ *
+ * 保证：
+ * - 首尾点必保留，返回点按原始顺序排列；
+ * - 任意被丢弃点在其原始时刻与相邻关键帧插值位置的偏差不超过 tolerance；
+ * - 相同容差下关键帧数不多于其他策略（全局最优），输出体积最小；
+ * - span >= 1（首点为 0），span 总和等于原始点数 - 1。
+ *
+ * @param maxRotationError 自转角插值误差上限（弧度），>0 时作为独立约束参与
+ *   段可行性判断，旋转与位置一同保真；0 为忽略旋转
  */
-function keepByDP(n, feasible) {
+function simplifyTrajectoryDP(trajectory, tolerance = 0, maxRotationError = 0) {
+    assertTolerance(tolerance);
+    const n = trajectory.length;
+    if (n === 0)
+        return [];
+    if (n === 1)
+        return [{ ...trajectory[0], span: 0 }];
+    const limitSq = tolerance * tolerance;
     // cost[i]：起点到 i 的最少段数；parent[i]：最优解中 i 的前一个关键帧
     const cost = new Array(n).fill(Infinity);
     const parent = new Array(n).fill(-1);
@@ -46125,7 +46816,8 @@ function keepByDP(n, feasible) {
             // 即使段 (j, i) 可行也不可能给出更优解时，跳过段检查
             if (cost[j] + 1 >= cost[i])
                 continue;
-            if (!feasible(j, i))
+            if (segmentMaxDeviationSq(trajectory, j, i, limitSq, maxRotationError) >
+                limitSq)
                 continue;
             cost[i] = cost[j] + 1;
             parent[i] = j;
@@ -46135,338 +46827,116 @@ function keepByDP(n, feasible) {
     for (let i = n - 1; i > 0; i = parent[i])
         keep[i] = true;
     keep[0] = true;
-    return keep;
+    return collectResult(trajectory, keep);
 }
-/** 时空版 Ramer-Douglas-Peucker：反复在段内偏差最大点分裂，直到全段可行 */
-function keepByRDP(n, findSplit) {
+/**
+ * 轨迹压缩——时空版 Ramer-Douglas-Peucker：
+ * 递归分裂，每次在当前段内找时刻插值偏差最大的点作为新关键帧，
+ * 直到所有被丢弃点的偏差都落入容差。
+ *
+ * @param maxRotationError 含义同 simplifyTrajectoryDP 的同名参数
+ */
+function simplifyTrajectoryRDP(trajectory, tolerance = 0, maxRotationError = 0) {
+    assertTolerance(tolerance);
+    const n = trajectory.length;
+    if (n === 0)
+        return [];
+    if (n === 1)
+        return [{ ...trajectory[0], span: 0 }];
     const keep = new Array(n).fill(false);
     keep[0] = keep[n - 1] = true;
+    const limitSq = tolerance * tolerance;
     // 显式栈代替递归，栈内为待检查的闭区间 [start, end]
     const stack = [[0, n - 1]];
     while (stack.length > 0) {
         const [start, end] = stack.pop();
         if (end - start < 2)
             continue;
-        const split = findSplit(start, end);
-        if (split >= 0) {
-            keep[split] = true;
-            stack.push([start, split], [split, end]);
+        // 找开区间内时刻插值偏差最大的点：位置与角度各跟踪一个，谁超限用谁分段
+        let maxSq = 0;
+        let maxSqIdx = -1;
+        let maxRot = 0;
+        let maxRotIdx = -1;
+        for (let i = start + 1; i < end; i++) {
+            const t = (i - start) / (end - start);
+            const d = deviationSq(trajectory[i], trajectory[start], trajectory[end], t);
+            if (d > maxSq) {
+                maxSq = d;
+                maxSqIdx = i;
+            }
+            if (maxRotationError > 0) {
+                const dr = rotationError(trajectory[i], trajectory[start], trajectory[end], t);
+                if (dr > maxRot) {
+                    maxRot = dr;
+                    maxRotIdx = i;
+                }
+            }
+        }
+        // 最大偏差仍在容差内则整段并为一个插值段，否则在最差点处分段
+        if (maxSq > limitSq || maxRot > maxRotationError) {
+            const splitIdx = maxSq > limitSq ? maxSqIdx : maxRotIdx;
+            keep[splitIdx] = true;
+            stack.push([start, splitIdx], [splitIdx, end]);
         }
     }
-    return keep;
+    return collectResult(trajectory, keep);
 }
-/** 单遍贪心最长段：从当前关键帧扩展段尾，直到加入下一点会破坏可行性 */
-function keepByGreedy(n, feasible) {
+/**
+ * 轨迹压缩——单遍贪心最长段：
+ * 从当前关键帧出发不断扩展段尾，直到加入下一点会使段内某点的
+ * 时刻插值偏差超出容差，此时该段尾即为下一个关键帧。
+ *
+ * @param maxRotationError 含义同 simplifyTrajectoryDP 的同名参数
+ */
+function simplifyTrajectoryGreedy(trajectory, tolerance = 0, maxRotationError = 0) {
+    assertTolerance(tolerance);
+    const n = trajectory.length;
+    if (n === 0)
+        return [];
+    if (n === 1)
+        return [{ ...trajectory[0], span: 0 }];
     const keep = new Array(n).fill(false);
     keep[0] = keep[n - 1] = true;
+    const limitSq = tolerance * tolerance;
     let s = 0;
     while (s < n - 1) {
         // 插值线随段尾变化，段可行性对段尾没有单调性，只能逐步扩展并全段重查
         let e = s + 1;
-        while (e < n - 1 && feasible(s, e + 1))
+        while (e < n - 1 &&
+            segmentMaxDeviationSq(trajectory, s, e + 1, limitSq, maxRotationError) <=
+                limitSq) {
             e++;
+        }
         keep[e] = true;
         s = e;
     }
-    return keep;
-}
-function keepByAlgorithm(n, algorithm, feasible, findSplit) {
-    switch (algorithm) {
-        case 'DP':
-            return keepByDP(n, feasible);
-        case 'RDP':
-            return keepByRDP(n, findSplit);
-        case 'Greedy':
-            return keepByGreedy(n, feasible);
-    }
+    return collectResult(trajectory, keep);
 }
 /**
- * 通道的段可行性：任一中间点的时刻插值偏差超限立即返回 false
- * （提前终止，长不可行段的开销为常数级）。
- * 度量含时间维：匀速段可整体并段，变速段会自动保留关键帧。
+ * 将简化轨迹的 span 归一化为关键帧时刻数组：各时刻 = span 前缀和占总和的比例，
+ * 首帧恒为 0、末帧恒为 1。未启用压缩（无 span）时返回 null，消费端按各引擎的
+ * 默认均分时间处理。
  */
-function channelFeasible(values, s, e, limit) {
-    const denom = e - s;
-    const a = values[s];
-    const span = values[e] - a;
-    for (let i = s + 1; i < e; i++) {
-        const t = (i - s) / denom;
-        if (Math.abs(values[i] - (a + span * t)) > limit)
-            return false;
-    }
-    return true;
-}
-/** 通道的段 (s, e) 内时刻插值偏差最大的中间点；段可行返回 -1 */
-function channelSplit(values, s, e, limit) {
-    let max = 0;
-    let maxIdx = -1;
-    const denom = e - s;
-    const a = values[s];
-    const span = values[e] - a;
-    for (let i = s + 1; i < e; i++) {
-        const t = (i - s) / denom;
-        const d = Math.abs(values[i] - (a + span * t));
-        if (d > max) {
-            max = d;
-            maxIdx = i;
-        }
-    }
-    return max > limit ? maxIdx : -1;
-}
-/** 把保留标记转为关键帧：保序，span 为相邻保留点的原始下标差 */
-function collectFrames(values, keep) {
-    const result = [];
-    let prevIdx = 0;
-    for (let i = 0; i < keep.length; i++) {
-        if (!keep[i])
-            continue;
-        result.push({ value: values[i], span: i - prevIdx });
-        prevIdx = i;
-    }
-    return result;
-}
-/**
- * 标量通道压缩：在"每个原始采样时刻的插值值偏差都不超过 tolerance"的
- * 约束下按所选算法分段。
- *
- * 保证：首尾点必保留、输出保序；span >= 1（首点为 0）且总和等于原始采样数 - 1
- */
-function simplifyChannel(frames, tolerance, algorithm) {
-    assertTolerance(tolerance);
-    const n = frames.length;
-    if (n === 0)
-        return [];
-    if (n === 1)
-        return [{ value: frames[0].value, span: 0 }];
-    const values = frames.map((f) => f.value);
-    const keep = keepByAlgorithm(n, algorithm, (s, e) => channelFeasible(values, s, e, tolerance), (s, e) => channelSplit(values, s, e, tolerance));
-    return collectFrames(values, keep);
-}
-/** 联合位置的段可行性：任一中间点的时刻插值欧氏偏差超限立即返回 false */
-function positionFeasible(points, s, e, limitSq) {
-    const denom = e - s;
-    const ax = points[s].x;
-    const ay = points[s].y;
-    const dxs = points[e].x - ax;
-    const dys = points[e].y - ay;
-    for (let i = s + 1; i < e; i++) {
-        const t = (i - s) / denom;
-        const dx = points[i].x - (ax + dxs * t);
-        const dy = points[i].y - (ay + dys * t);
-        if (dx * dx + dy * dy > limitSq)
-            return false;
-    }
-    return true;
-}
-/** 联合位置的段 (s, e) 内时刻插值偏差平方最大的中间点；段可行返回 -1 */
-function positionSplit(points, s, e, limitSq) {
-    let maxSq = 0;
-    let maxIdx = -1;
-    const denom = e - s;
-    const ax = points[s].x;
-    const ay = points[s].y;
-    const dxs = points[e].x - ax;
-    const dys = points[e].y - ay;
-    for (let i = s + 1; i < e; i++) {
-        const t = (i - s) / denom;
-        const dx = points[i].x - (ax + dxs * t);
-        const dy = points[i].y - (ay + dys * t);
-        const d = dx * dx + dy * dy;
-        if (d > maxSq) {
-            maxSq = d;
-            maxIdx = i;
-        }
-    }
-    return maxSq > limitSq ? maxIdx : -1;
-}
-/**
- * 联合位置压缩：x、y 共享关键帧，约束为合成位置的时刻插值偏差
- * （欧氏距离）不超过 tolerance。帧数比两个分轴通道的并集更少——
- * 一个关键帧同时承载两轴，单轴的小折点可被另一轴的容差预算吸收。
- */
-function simplifyPositions(points, tolerance, algorithm) {
-    assertTolerance(tolerance);
-    const n = points.length;
-    if (n === 0)
-        return [];
-    if (n === 1)
-        return [{ x: points[0].x, y: points[0].y, span: 0 }];
-    const limitSq = tolerance * tolerance;
-    const keep = keepByAlgorithm(n, algorithm, (s, e) => positionFeasible(points, s, e, limitSq), (s, e) => positionSplit(points, s, e, limitSq));
-    const result = [];
-    let prevIdx = 0;
-    for (let i = 0; i < keep.length; i++) {
-        if (!keep[i])
-            continue;
-        result.push({ x: points[i].x, y: points[i].y, span: i - prevIdx });
-        prevIdx = i;
-    }
-    return result;
-}
-/**
- * 通道化轨迹压缩入口：x、y 与自转各自独立分段，互不拖累。
- * tolerance 为单轴容差：两轴各自与真实坐标的插值偏差都不超过它
- * （合成位移上界为其 √2 倍）。
- *
- * @param trajectory 原始轨迹（无 span），重复压缩不支持
- * @param tolerance 单轴位置容差，物理坐标单位
- * @param maxRotationError 自转角插值误差上限（弧度）；0 为不压缩旋转通道，
- *   全量保留并按帧序均分时间
- * @param algorithm 分段算法。默认 Greedy：真实轨迹上关键帧数仅比全局最优
- *   （DP）多 1~3%，耗时低一个数量级；追求极致体积可改用 DP
- * @param withJoint 同时产出联合位置表达（欧氏容差），供 SMIL 这类只能
- *   消费绑定 "x,y" 的引擎使用；拆分通道折点错开时联合帧数更少
- */
-function compressTrajectory(trajectory, tolerance, maxRotationError, algorithm = 'Greedy', withJoint = false) {
-    const rotation = trajectory.rotation;
-    const result = {
-        x: simplifyChannel(trajectory.x, tolerance, algorithm),
-        y: simplifyChannel(trajectory.y, tolerance, algorithm),
-        rotation: rotation && rotation.length > 0
-            ? maxRotationError > 0
-                ? simplifyChannel(rotation, maxRotationError, algorithm)
-                : rotation.map((r) => ({ value: r.value }))
-            : undefined
-    };
-    if (withJoint) {
-        // 联合压缩的输入是原始采样：x、y 通道按同一时刻对齐，逐下标配对即可
-        result.joint = simplifyPositions(trajectory.x.map((f, i) => ({ x: f.value, y: trajectory.y[i].value })), tolerance, algorithm);
-    }
-    return result;
-}
-/** 通道各关键帧的归一化时刻（span 前缀和 / 总采样间隔）；未压缩为均分 */
-function channelTimeline(frames) {
-    const n = frames.length;
-    if (frames[0].span === undefined) {
-        return Array.from({ length: n }, (_, i) => (n === 1 ? 0 : i / (n - 1)));
-    }
-    const total = frames.reduce((sum, f) => sum + (f.span ?? 0), 0);
-    // frames[k].span 是帧 k 与前一帧的间隔，先累加再取时刻（首帧恒为 0）
-    const times = [0];
-    let acc = 0;
-    for (const f of frames.slice(1)) {
-        acc += f.span ?? 0;
-        times.push(acc / total);
-    }
-    return times;
-}
-/** 时刻 t 处通道的线性插值值；timeline 为 channelTimeline 的产出 */
-function sampleChannel(frames, timeline, t) {
-    // k 定位 t 所属的段 [timeline[k], timeline[k + 1]]
-    let k = 0;
-    while (k + 2 < frames.length && timeline[k + 1] <= t)
-        k++;
-    const span = timeline[k + 1] - timeline[k];
-    const frac = span === 0 ? 0 : (t - timeline[k]) / span;
-    return frames[k].value + (frames[k + 1].value - frames[k].value) * frac;
-}
-/** 时刻序列化为严格递增的 keyTimes：首帧 0、末帧 1，舍入后相邻防碰撞 */
-function normalizeKeyTimes(times) {
+function buildKeyTimesArray(trajectory) {
+    if (trajectory.length < 2 || trajectory[0].span === undefined)
+        return null;
+    const total = trajectory.reduce((sum, p) => sum + (p.span ?? 0), 0);
     const keyTimes = [0];
-    for (const t of times.slice(1, -1)) {
+    let acc = 0;
+    for (const p of trajectory.slice(1)) {
+        acc += p.span ?? 0;
         // 严格递增：相邻至少差 1e-6，避免长轨迹舍入后相邻值相同
         const prev = keyTimes[keyTimes.length - 1];
-        keyTimes.push(Math.min(Math.max(+t.toFixed(6), prev + 1e-6), 0.999999));
+        const t = +(acc / total).toFixed(6);
+        keyTimes.push(Math.min(Math.max(t, prev + 1e-6), 0.999999));
     }
     // 末帧强制为 1，消除累计浮点误差
-    keyTimes.push(1);
+    keyTimes[keyTimes.length - 1] = 1;
     return keyTimes;
 }
-/** 并集重采样点的无损合并阈值（物理单位），吸收插值的浮点舍入 */
-const MERGE_EPSILON = 1e-9;
-/**
- * 并集帧中两轴都匀速共线的中间点可以无损丢弃：并集相邻时刻之间两轴
- * 都线性，丢弃后插值在任意时刻的值不变。抵消并集引入的冗余帧——
- * x 与 y 的折点时刻不同时，并集会把这些点两两互插一遍。
- */
-function compactUnion(points, times) {
-    const n = points.length;
-    if (n < 3)
-        return { points, times };
-    const keptPoints = [points[0]];
-    const keptTimes = [times[0]];
-    let s = 0;
-    while (s < n - 1) {
-        // 逐步扩展段尾：整段内所有中间点都在首尾连线上则整段可合并
-        let e = s + 1;
-        while (e < n - 1) {
-            const next = e + 1;
-            const span = times[next] - times[s];
-            let mergeable = true;
-            for (let i = s + 1; i <= e; i++) {
-                const t = span === 0 ? 0 : (times[i] - times[s]) / span;
-                const px = points[s].x + (points[next].x - points[s].x) * t;
-                const py = points[s].y + (points[next].y - points[s].y) * t;
-                if (Math.abs(points[i].x - px) > MERGE_EPSILON ||
-                    Math.abs(points[i].y - py) > MERGE_EPSILON) {
-                    mergeable = false;
-                    break;
-                }
-            }
-            if (!mergeable)
-                break;
-            e = next;
-        }
-        keptPoints.push(points[e]);
-        keptTimes.push(times[e]);
-        s = e;
-    }
-    return { points: keptPoints, times: keptTimes };
-}
-/**
- * 把拆分的 x/y 通道重联合为 translate 消费的帧序列。
- *
- * 时刻取两通道关键帧时间轴的并集：并集相邻点之间两轴都线性，合成轨迹
- * 仍是精确的匀速直线段，每个并集时刻两轴都精确命中各自通道的插值值，
- * 因此联合表达与拆分表达视觉无损等价。并集中两轴都共线匀速的冗余点
- * 会被无损合并掉。供不支持单轴插值的消费端（SMIL translate 的 values
- * 是绑定的 "x,y" 对）使用。
- */
-function mergePositionChannels(x, y) {
-    const uniform = x[0].span === undefined && y[0].span === undefined;
-    if (uniform) {
-        // 未压缩：两通道帧数相同且均分，逐帧配对即精确值
-        const n = Math.min(x.length, y.length);
-        return {
-            points: Array.from({ length: n }, (_, i) => ({
-                x: x[i].value,
-                y: y[i].value
-            })),
-            keyTimes: null
-        };
-    }
-    const xTimes = channelTimeline(x);
-    const yTimes = channelTimeline(y);
-    // 两通道的同一原始时刻数值精确相等（同一 span 前缀和算式），Set 去重即可
-    const times = [...new Set([...xTimes, ...yTimes])].sort((a, b) => a - b);
-    if (times.length < 2) {
-        return { points: [{ x: x[0].value, y: y[0].value }], keyTimes: null };
-    }
-    const merged = compactUnion(times.map((t) => ({
-        x: sampleChannel(x, xTimes, t),
-        y: sampleChannel(y, yTimes, t)
-    })), times);
-    if (merged.points.length < 2) {
-        return { points: merged.points, keyTimes: null };
-    }
-    return {
-        points: merged.points,
-        keyTimes: normalizeKeyTimes(merged.times)
-    };
-}
-/**
- * 将关键帧的 span 归一化为时间数组：各时刻 = span 前缀和占总和的比例，
- * 首帧恒为 0、末帧恒为 1。适用于任意通道的关键帧序列；未启用压缩
- * （无 span）时返回 null，消费端按帧序均分时间处理。
- */
-function buildKeyTimesArray(frames) {
-    if (frames.length < 2 || frames[0].span === undefined)
-        return null;
-    return normalizeKeyTimes(channelTimeline(frames));
-}
 /** 将关键帧时刻数组序列化为 SMIL animateTransform 的 keyTimes 属性值 */
-function buildKeyTimes(frames) {
-    const keyTimes = buildKeyTimesArray(frames);
+function buildKeyTimes(trajectory) {
+    const keyTimes = buildKeyTimesArray(trajectory);
     return keyTimes ? keyTimes.join(';') : null;
 }
 
@@ -46483,6 +46953,12 @@ function withDefaults(defaults, overrides) {
     return Object.assign({ ...defaults }, filtered);
 }
 
+/** 压缩算法名 */
+const COMPRESSION_ALGORITHMS = {
+    DP: simplifyTrajectoryDP,
+    RDP: simplifyTrajectoryRDP,
+    Greedy: simplifyTrajectoryGreedy
+};
 /** 把自转角解缠绕到与上一帧连续（差收敛到 ±π 内），保证轨迹角度可直接线性插值 */
 function unwrapRotation(next, prev) {
     let rotation = next;
@@ -46499,7 +46975,6 @@ class Contribution {
     x;
     y;
     color;
-    /** 采样轨迹：x/y 通道每帧记录，自转角通道仅方形记录 */
     trajectory;
     /** 自转角 */
     trackRotation;
@@ -46512,37 +46987,32 @@ class Contribution {
         const pos = collider.translation();
         this.x = pos.x;
         this.y = pos.y;
-        this.trajectory = trackRotation
-            ? { x: [], y: [], rotation: [] }
-            : { x: [], y: [] };
-        this.recordSample(pos);
+        this.trajectory = [];
+        this.trajectory.push(this.recordPoint(pos));
     }
     update() {
-        this.recordSample(this.collider.translation());
-    }
-    /** 记录当前时刻的位姿采样：坐标入各自通道，解缠绕后的自转角入旋转通道 */
-    recordSample(pos) {
+        const pos = this.collider.translation();
         this.x = pos.x;
         this.y = pos.y;
-        this.trajectory.x.push({ value: pos.x });
-        this.trajectory.y.push({ value: pos.y });
+        this.trajectory.push(this.recordPoint(pos));
+    }
+    /** 记录当前时刻的位置 */
+    recordPoint(pos) {
         if (!this.trackRotation)
-            return;
-        const rotations = this.trajectory.rotation;
-        const prev = rotations[rotations.length - 1]?.value ?? 0;
-        rotations.push({ value: unwrapRotation(this.collider.rotation(), prev) });
+            return { x: pos.x, y: pos.y };
+        const last = this.trajectory[this.trajectory.length - 1];
+        return {
+            x: pos.x,
+            y: pos.y,
+            rotation: unwrapRotation(this.collider.rotation(), last?.rotation ?? 0)
+        };
     }
     getTrajectory() {
         return this.trajectory;
     }
-    /** 移除各通道轨迹末尾 count 个采样 */
+    /** 移除轨迹末尾 count 个点 */
     truncateTail(count) {
-        const kept = Math.max(1, this.trajectory.x.length - count);
-        this.trajectory.x.length = kept;
-        this.trajectory.y.length = kept;
-        if (this.trajectory.rotation) {
-            this.trajectory.rotation.length = kept;
-        }
+        this.trajectory.length = Math.max(1, this.trajectory.length - count);
     }
     toJSON() {
         return {
@@ -46608,7 +47078,7 @@ function getTextBoundBox(textPaths, { width, height, textTop }) {
  * 创建模拟世界并放入全部物体：地面、墙壁、用户名文字碰撞体与贡献方块。
  */
 async function createSimulationWorld(options) {
-    const { username, text = username, textTop, shape, font, size, interval, fontSize, width, height, friction, restitution } = withDefaults(DEFAULT_OPTIONS, options);
+    const { username, text = username, textTop, shape, font, size, interval, fontSize, width, height, friction, restitution, calendarList } = withDefaults(DEFAULT_OPTIONS, options);
     const world = await createWord(width, height);
     const contributions = [];
     // 创建用户名文字静止碰撞体（居中对齐）
@@ -46639,7 +47109,7 @@ async function createSimulationWorld(options) {
             world.createCollider(colliderDesc.setFriction(0.3), textBody);
         }
     }
-    const githubContributions = await fetchContributions(username);
+    const githubContributions = calendarList ?? (await fetchContributions(username));
     const rowLen = githubContributions.contributions.length;
     const rowWidth = size * rowLen + interval * (rowLen - 1);
     // left 是矩阵左边缘，而碰撞体按中心定位，首列中心需再右移半个方块
@@ -46681,7 +47151,7 @@ async function createSimulationWorld(options) {
  * 开始模拟
  */
 async function startSimulation(options) {
-    const { shape, size, compressionAlgorithm, compressionTolerance, disableCompression, jointPosition, maxSimulationTime, speed } = withDefaults(DEFAULT_OPTIONS, options);
+    const { shape, size, compressionAlgorithm, compressionTolerance, disableCompression, maxSimulationTime, speed } = withDefaults(DEFAULT_OPTIONS, options);
     const { world, contributions, textPaths, offsetX, centerY } = await createSimulationWorld(options);
     // 容差从 SVG 像素换算回物理坐标单位，让压缩函数与渲染缩放解耦；
     const tolerance = compressionTolerance / SCALE;
@@ -46738,11 +47208,10 @@ async function startSimulation(options) {
         time: endTime - startTime,
         contributions: contributions.map((contribution) => {
             const json = contribution.toJSON();
-            // 位置与自转按各自容差独立分段，旋转剧变不会迫使位置加密
             return !disableCompression
                 ? {
                     ...json,
-                    trajectory: compressTrajectory(json.trajectory, tolerance, shape === 'square' ? MAX_ROTATION_ERROR : 0, compressionAlgorithm, jointPosition)
+                    trajectory: COMPRESSION_ALGORITHMS[compressionAlgorithm](json.trajectory, tolerance, shape === 'square' ? MAX_ROTATION_ERROR : 0)
                 }
                 : json;
         }),
@@ -46756,6 +47225,15 @@ async function startSimulation(options) {
 }
 
 /**
+ * 包裹含空元素的 SVG 片段，把空元素折回自闭合形式：
+ * @kitajs/html 只为 HTML void 标签输出 <tag/>，SVG 空元素会被展开成
+ * <circle></circle>。本文件渲染出的这几种元素恒无子节点。
+ */
+async function SelfClosed({ children }) {
+    const markup = await htmlExports.contentsToString([children]);
+    return markup.replace(/><\/(circle|rect|path|animateTransform)>/g, '/>');
+}
+/**
  * 生成贡献方块重力模拟的 SVG 动画字符串。
  * 模拟 GitHub 用户的贡献方块从上方掉落，最终静止在底部。
  *
@@ -46764,168 +47242,115 @@ async function startSimulation(options) {
  */
 async function gensvg(options) {
     const op = withDefaults(DEFAULT_OPTIONS, options);
-    // SMIL 的 translate 只能消费绑定的 "x,y" 对，让模拟一并产出联合位置表达；
-    // CSS 引擎按通道独立播放，无需联合表达
-    const result = await startSimulation({ ...op, jointPosition: !op.css });
+    const result = await startSimulation(op);
     const svgWidth = op.width * SCALE;
     const svgHeight = op.height * SCALE;
-    // 生成每个贡献方块的 SVG 元素
-    const isCircle = op.shape === 'circle';
     const dur = `${Math.round((result.stepCount * TIMESTEP * 1000) / op.speed)}ms`;
     // 轨迹坐标转换：物理坐标 → SVG 坐标（Y 轴翻转），保留 2 位小数；
     // 方形自转角（弧度，已解缠绕）Y 翻转后旋转方向取反
-    const toSvgX = (x) => +(x * SCALE).toFixed(2);
-    const toSvgY = (y) => +((op.height - y) * SCALE).toFixed(2);
-    const toSvgDeg = (rotation) => +((-(rotation ?? 0) * 180) / Math.PI).toFixed(2);
-    // CSS 引擎：keyframes 与 data-g{index} 绑定规则逐方块收集，最后收敛进单个 style
+    const ctx = {
+        isCircle: op.shape === 'circle',
+        sizePx: op.size * SCALE,
+        halfSizePx: (op.size / 2) * SCALE,
+        dur,
+        toSvgX: (x) => +(x * SCALE).toFixed(2),
+        toSvgY: (y) => +((op.height - y) * SCALE).toFixed(2),
+        toSvgDeg: (rotation) => +((-(rotation ?? 0) * 180) / Math.PI).toFixed(2)
+    };
+    // 双引擎派发：各自生成方块组与 style 片段
+    const { style, blocks } = op.css
+        ? renderCssBlocks(result.contributions, ctx, op.animation)
+        : renderSmilBlocks(result.contributions, ctx);
+    // 含空元素的片段各自经 SelfClosed 折叠，根节点只做装配
+    return await (jsxRuntimeExports.jsxs("svg", { xmlns: "http://www.w3.org/2000/svg", width: svgWidth * op.scale, height: svgHeight * op.scale, viewBox: `0 0 ${svgWidth} ${svgHeight}`, children: [style, jsxRuntimeExports.jsx(SelfClosed, { children: jsxRuntimeExports.jsx("rect", { width: svgWidth, height: svgHeight, fill: op.backgroundColor }) }), jsxRuntimeExports.jsx(SelfClosed, { children: blocks }), jsxRuntimeExports.jsx(SelfClosed, { children: jsxRuntimeExports.jsx("g", { transform: `translate(${result.offsetX * SCALE}, ${(op.height - result.centerY) * SCALE}) scale(${SCALE})`, children: result.textPaths.map(({ pathData }) => (jsxRuntimeExports.jsx("path", { d: pathData, fill: op.textColor }))) }) })] }));
+}
+/**
+ * SMIL 引擎：每个方块自带 animateTransform，轨迹写进 values，
+ * 不依赖 CSS，兼容最广的 SVG 渲染环境。
+ */
+function renderSmilBlocks(contributions, ctx) {
+    const blocks = contributions.map((contribution) => {
+        const shape = ctx.isCircle ? (jsxRuntimeExports.jsx("circle", { r: ctx.halfSizePx, fill: contribution.color })) : (jsxRuntimeExports.jsx("rect", { x: -ctx.halfSizePx, y: -ctx.halfSizePx, width: ctx.sizePx, height: ctx.sizePx, fill: contribution.color }));
+        const values = contribution.trajectory
+            .map(({ x, y }) => `${ctx.toSvgX(x)},${ctx.toSvgY(y)}`)
+            .join(';');
+        // 开启压缩后各段时间跨度不同，需要 keyTimes 还原真实节奏；未压缩时为 null，走 SMIL 默认均分
+        const keyTimes = buildKeyTimes(contribution.trajectory);
+        // 方形轨迹携带自转角：叠加在平移之后，绕方块中心旋转
+        const rotations = ctx.isCircle
+            ? ''
+            : contribution.trajectory
+                .map(({ rotation }) => ctx.toSvgDeg(rotation ?? 0))
+                .join(';');
+        return (jsxRuntimeExports.jsxs("g", { "data-date": contribution.date, children: [shape, jsxRuntimeExports.jsx("animateTransform", { attributeName: "transform", attributeType: "XML", type: "translate", values: values, keyTimes: keyTimes, dur: ctx.dur, fill: "freeze" }), rotations && (jsxRuntimeExports.jsx("animateTransform", { attributeName: "transform", attributeType: "XML", type: "rotate", additive: "sum", values: rotations, keyTimes: keyTimes, dur: ctx.dur, fill: "freeze" }))] }));
+    });
+    return { style: '', blocks: jsxRuntimeExports.jsx(jsxRuntimeExports.Fragment, { children: blocks }) };
+}
+/**
+ * CSS 引擎：方块只携带「颜色 + 动画名」两个 class，轨迹写进 @keyframes 帧变量，
+ * transform 合成、几何与 fill 全部收敛进自包含 style 的公共规则，逐方块输出最小化。
+ */
+function renderCssBlocks(contributions, ctx, animation) {
+    // animation 值拼进 CDATA 内的规则体，花括号、分号或 CDATA 结束符都会提前
+    // 退出声明作用域、撕碎整个 style 块
+    if (/[{};]/.test(animation) || animation.includes(']]>')) {
+        throw new Error(`Invalid animation "${animation}": must not contain braces, semicolons or "]]>"`);
+    }
+    // fill 按颜色去重分组为 class 规则（贡献色阶取值极少）
+    const fillRules = [];
+    const fillClassByColor = new Map();
+    const fillClass = (color) => {
+        let cls = fillClassByColor.get(color);
+        if (!cls) {
+            cls = `f${fillClassByColor.size}`;
+            fillClassByColor.set(color, cls);
+            fillRules.push(`.${cls}{fill:${color}}`);
+        }
+        return cls;
+    };
     const keyframesRules = [];
     const bindingRules = [];
-    const contributionsSvg = result.contributions
-        .map((contribution, index) => {
-        const shapeElement = isCircle
-            ? `<circle r="${(op.size / 2) * SCALE}" fill="${contribution.color}"/>`
-            : `<rect x="${-(op.size / 2) * SCALE}" y="${-(op.size / 2) * SCALE}" width="${op.size * SCALE}" height="${op.size * SCALE}" fill="${contribution.color}"/>`;
-        if (op.css) {
-            const { x, y, rotation } = contribution.trajectory;
-            // 每个通道独立成动画：活跃通道生成自己的 keyframes，恒定通道折叠为
-            // 静态变量并把动画名置为 none——置 none 而非不绑定，是因为未定义的
-            // var() 会让浏览器判定整条 animation 声明无效，冻结其余通道的动画
-            const channels = [
-                {
-                    frames: x,
-                    suffix: 'x',
-                    animVar: 'nx',
-                    cssVar: '--x',
-                    fmt: (v) => `${toSvgX(v)}px`
-                },
-                {
-                    frames: y,
-                    suffix: 'y',
-                    animVar: 'ny',
-                    cssVar: '--y',
-                    fmt: (v) => `${toSvgY(v)}px`
-                },
-                ...(rotation
-                    ? [
-                        {
-                            frames: rotation,
-                            suffix: 'r',
-                            animVar: 'nr',
-                            cssVar: '--r',
-                            fmt: (v) => `${toSvgDeg(v)}deg`
-                        }
-                    ]
-                    : [])
-            ];
-            const binding = [];
-            for (const ch of channels) {
-                const name = `g${index}${ch.suffix}`;
-                const constant = ch.frames.every((f) => f.value === ch.frames[0].value);
-                if (constant) {
-                    binding.push(`--${ch.animVar}:none`, `${ch.cssVar}:${ch.fmt(ch.frames[0].value)}`);
-                    continue;
-                }
-                // 帧节奏：压缩轨迹按 span 前缀和换算（5 位小数避免相邻帧舍入碰撞），
-                // 未压缩时为均匀分布
-                const times = buildKeyTimesArray(ch.frames);
-                const fractions = times ??
-                    Array.from({ length: ch.frames.length }, (_, i) => i / Math.max(ch.frames.length - 1, 1));
-                const offsets = fractions.map((t) => `${+(t * 100).toFixed(5)}%`);
-                keyframesRules.push(`@keyframes ${name}{${ch.frames
-                    .map((f, i) => `${offsets[i]}{${ch.cssVar}:${ch.fmt(f.value)}}`)
-                    .join('')}}`);
-                binding.push(`--${ch.animVar}:${name}`);
-            }
-            bindingRules.push(`[data-g${index}]{${binding.join(';')}}`);
-            return `\
-<g data-g${index}="">\
-${shapeElement}\
-</g>`;
-        }
-        const { x, y, rotation, joint } = contribution.trajectory;
-        // translate 帧优先用联合位置压缩的结果（帧数最少）；调试或未启用
-        // 联合压缩时退回 x/y 通道的时间轴并集重采样，视觉等价
-        const merged = joint
-            ? { points: joint, keyTimes: buildKeyTimesArray(joint) }
-            : mergePositionChannels(x, y);
-        const values = merged.points
-            .map((p) => `${toSvgX(p.x)},${toSvgY(p.y)}`)
-            .join(';');
-        const keyTimesAttr = merged.keyTimes
-            ? ` keyTimes="${merged.keyTimes.join(';')}"`
-            : '';
-        // 自转通道按自身 span 换算 keyTimes，与平移动画的时间轴互不牵制
-        let rotateAnim = '';
-        if (rotation) {
-            const rotKeyTimes = buildKeyTimes(rotation);
-            const rotKeyTimesAttr = rotKeyTimes ? ` keyTimes="${rotKeyTimes}"` : '';
-            rotateAnim = `\
-<animateTransform attributeName="transform" attributeType="XML" type="rotate" additive="sum" values="${rotation
-                .map((r) => toSvgDeg(r.value))
-                .join(';')}"${rotKeyTimesAttr} dur="${dur}" fill="freeze"/>`;
-        }
-        return `\
-<g data-date="${contribution.date}">\
-${shapeElement}\
-<animateTransform attributeName="transform" attributeType="XML" type="translate" values="${values}"${keyTimesAttr} dur="${dur}" fill="freeze"/>\
-${rotateAnim}\
-</g>`;
-    })
-        .join('');
+    const blocks = contributions.map((contribution, index) => {
+        const cls = `${fillClass(contribution.color)} g${index}`;
+        // 帧偏移：压缩后按真实节奏换算（5 位小数避免相邻帧舍入碰撞），
+        // 未压缩时为均匀分布
+        const times = buildKeyTimesArray(contribution.trajectory);
+        const frameCount = contribution.trajectory.length;
+        const fractions = times ??
+            Array.from({ length: frameCount }, (_, i) => i / Math.max(frameCount - 1, 1));
+        const offsets = fractions.map((t) => `${+(t * 100).toFixed(5)}%`);
+        // 每帧只写坐标变量，transform 的合成模板在公共规则；
+        // rotate 叠加在 translate 之后，绕方块中心旋转
+        keyframesRules.push(`@keyframes g${index}{${contribution.trajectory
+            .map((p, i) => {
+            const rotation = ctx.isCircle
+                ? ''
+                : `;--r:${ctx.toSvgDeg(p.rotation ?? 0)}deg`;
+            return `${offsets[i]}{--x:${ctx.toSvgX(p.x)}px;--y:${ctx.toSvgY(p.y)}px${rotation}}`;
+        })
+            .join('')}}`);
+        bindingRules.push(`.g${index}{--n:g${index}}`);
+        return ctx.isCircle ? jsxRuntimeExports.jsx("circle", { class: cls }) : jsxRuntimeExports.jsx("rect", { class: cls });
+    });
     // 坐标变量须注册为带类型的自定义属性才能在帧间平滑插值；方形额外注册自转角
     const cssPropertyRules = [
         `@property --x{syntax:"<length>";inherits:false;initial-value:0px}`,
         `@property --y{syntax:"<length>";inherits:false;initial-value:0px}`,
-        ...(isCircle
+        ...(ctx.isCircle
             ? []
             : [`@property --r{syntax:"<angle>";inherits:false;initial-value:0deg}`])
     ].join('');
-    const cssRotateTemplate = isCircle ? '' : ' rotate(var(--r))';
-    // 公共动画逐通道声明：用户模板里的 var(--n) 按通道替换为对应动画名变量，
-    // 每个方块的绑定规则保证变量总有值（恒定通道为 none，动画项安全关闭）
-    const channelAnim = (v) => op.animation.replaceAll('var(--n)', `var(--${v})`);
-    const cssAnimation = [
-        channelAnim('nx'),
-        channelAnim('ny'),
-        ...(isCircle ? [] : [channelAnim('nr')])
-    ].join(',');
-    // animation 值拼进 CDATA 内的规则体，花括号、分号或 CDATA 结束符都会提前
-    // 退出声明作用域、撕碎整个 style 块
-    if (op.css && (/[{};]/.test(op.animation) || op.animation.includes(']]>'))) {
-        throw new Error(`Invalid animation "${op.animation}": must not contain braces, semicolons or "]]>"`);
-    }
+    const cssRotateTemplate = ctx.isCircle ? '' : ' rotate(var(--r))';
+    // 方块几何全部相同，收进 SVG2 geometry properties 公共规则，不再逐方块写属性
+    const cssGeometryRule = ctx.isCircle
+        ? `#b>circle{r:${ctx.halfSizePx}px}`
+        : `#b>rect{x:${-ctx.halfSizePx}px;y:${-ctx.halfSizePx}px;width:${ctx.sizePx}px;height:${ctx.sizePx}px}`;
     // CDATA（style 处于 XML 解析上下文，<length> 会被当标签解析）；
     // animation 默认值 = 变量注入的动画名与时长 + linear + 末帧冻结与首帧前的位置兜底
-    const styleSvg = op.css
-        ? `\
-<style><![CDATA[\
-${cssPropertyRules}\
-:root{--dur:${dur}}\
-#b>g{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${cssAnimation}}\
-${keyframesRules.join('')}\
-${bindingRules.join('')}\
-]]></style>`
-        : '';
-    // 方块收进 #b 组，供公共规则 #b>g 命中
-    const blocksSvg = op.css
-        ? `<g id="b">${contributionsSvg}</g>`
-        : contributionsSvg;
-    // 用 path 渲染文字路径，与物理碰撞体坐标对齐
-    // opentype 坐标 → SVG 坐标: svgX = (opentypeX + offsetX) * SCALE, svgY = (height - centerY + opentypeY) * SCALE
-    const textPathsSvg = result.textPaths
-        .map(({ pathData }) => `<path d="${pathData}" fill="${op.textColor}"/>`)
-        .join('');
-    const textGroupSvg = `\
-<g transform="translate(${result.offsetX * SCALE}, ${(op.height - result.centerY) * SCALE}) scale(${SCALE})">\
-${textPathsSvg}\
-</g>`;
-    return `\
-<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth * op.scale}" height="${svgHeight * op.scale}" viewBox="0 0 ${svgWidth} ${svgHeight}">\
-${styleSvg}\
-<rect width="${svgWidth}" height="${svgHeight}" fill="${op.backgroundColor}"/>\
-${blocksSvg}\
-${textGroupSvg}\
-</svg>`;
+    const cssRules = `<![CDATA[${cssPropertyRules}:root{--dur:${ctx.dur}}#b>*{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${animation}}${cssGeometryRule}${fillRules.join('')}${keyframesRules.join('')}${bindingRules.join('')}]]>`;
+    const style = jsxRuntimeExports.jsx("style", { children: cssRules });
+    // 方块收进 #b 组，供公共规则命中
+    return { style, blocks: jsxRuntimeExports.jsx("g", { id: "b", children: blocks }) };
 }
 
 /** 读取可选数字输入，未填写时返回 undefined，由库使用默认值 */

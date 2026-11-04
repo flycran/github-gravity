@@ -32,7 +32,7 @@ bun run build:web          # 网页版构建，输出 dist-web/（不入库）
 `package.json` 的 `version` 是版本号唯一事实源，遵循语义化版本：
 
 1. 在 PR 中 bump `version` 并合入 main；
-2. `sync-version-tag.yml` 检测 main 上的 `version` 缺少对应 tag 时自动打 `vX.Y.Z`；
-3. `update-major-tag.yml` 将 `vX` 大版本 tag 移动到新版本指向的提交。
+2. `sync-version-tag.yml` 检测 main 上的 `version` 缺少对应 tag 时自动打 `vX.Y.Z`，
+   并将 `vX` 大版本 tag 移动到新版本指向的提交。
 
 无需手动打 tag。
