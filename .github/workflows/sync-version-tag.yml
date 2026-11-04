@@ -24,26 +24,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      # package.json 是版本号唯一事实源：main 上的 version 没有对应 tag 时自动补打，
-      # 并把大版本 tag（v3.3.3 -> v3）移到同一提交；已存在则跳过，幂等可重跑。
-      # major tag 必须在这里一并更新：GITHUB_TOKEN 的 push 不会触发其他 workflow，
-      # 单独的 tag-push 工作流永远等不到事件
-      - name: Create tags if missing
-        id: create-tags
+      # package.json 是版本号唯一事实源：main 上的 version 没有对应 tag 时自动补打。
+      # major tag 必须在这里一并维护：GITHUB_TOKEN 的 push 不会触发其他 workflow，
+      # 单独的 tag-push 工作流永远等不到事件。major tag 每次都校验是否指向最新版本
+      # 提交，不一致才修正，历史遗留、误删、漏移都能自愈
+      - name: Sync version and major tags
+        id: sync-tags
         run: |
           VERSION="v$(node -p "require('./package.json').version")"
           MAJOR="${VERSION%%.*}"
 
-          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
-            echo "$VERSION already exists, nothing to do"
-            exit 0
+          if ! git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            git tag "$VERSION" "$GITHUB_SHA"
+            git push origin "$VERSION"
           fi
 
-          git tag "$VERSION" "$GITHUB_SHA"
-          git push origin "$VERSION"
-
-          git tag -f "$MAJOR" "$GITHUB_SHA"
-          git push -f origin "$MAJOR"
-
-          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "major-tag=$MAJOR" >> "$GITHUB_OUTPUT"
+          if [ "$(git rev-parse -q --verify "refs/tags/$MAJOR^{commit}" 2>/dev/null)" != "$(git rev-parse "$VERSION^{commit}")" ]; then
+            git tag -f "$MAJOR" "$VERSION"
+            git push -f origin "$MAJOR"
+          fi
