@@ -7,12 +7,11 @@
  * 手动运行：bun run compare
  */
 
-import { maxLerpDeviation, sumSpans } from '../__tests__/simplifyHelpers'
+import { maxChannelDeviation, sumSpans } from '../__tests__/simplifyHelpers'
 import { startSimulation } from '../src/utils/physics'
 import {
   CompressionAlgorithm,
-  compressTrajectory,
-  Trajectory
+  compressTrajectory
 } from '../src/utils/simplifyTrajectory'
 
 const algorithms: CompressionAlgorithm[] = ['DP', 'RDP', 'Greedy']
@@ -28,10 +27,10 @@ const simulation = await startSimulation({
 })
 
 const tracks = simulation.contributions.map((c) => c.trajectory)
-const totalPoints = tracks.reduce((sum, t) => sum + t.position.length, 0)
+const totalPoints = tracks.reduce((sum, t) => sum + t.x.length + t.y.length, 0)
 console.log(
-  `${tracks.length} trajectories, ${totalPoints} points total, ` +
-    `avg ${Math.round(totalPoints / tracks.length)} points/track, ` +
+  `${tracks.length} trajectories, ${totalPoints} channel values total, ` +
+    `avg ${Math.round(totalPoints / tracks.length / 2)} samples/track, ` +
     `${Math.round(simulation.stepCount)} steps`
 )
 
@@ -53,19 +52,26 @@ for (const algorithm of algorithms) {
     const start = performance.now()
 
     for (const track of tracks) {
-      // 对比只关心位置通道指标：旋转上限传 0，旋转通道无损全量保留
-      const result: Trajectory = compressTrajectory(
-        track,
-        tolerance,
-        0,
-        algorithm
-      )
-      const position = result.position
-      kept += position.length
-      if (sumSpans(position) !== track.position.length - 1) {
+      // 对比只关心坐标通道指标：旋转上限传 0，旋转通道无损全量保留
+      const result = compressTrajectory(track, tolerance, 0, algorithm)
+      kept += result.x.length + result.y.length
+      if (
+        sumSpans(result.x) !== track.x.length - 1 ||
+        sumSpans(result.y) !== track.y.length - 1
+      ) {
         throw new Error(`${algorithm}: span sum mismatch`)
       }
-      const deviation = maxLerpDeviation(track.position, position)
+      // 单轴校验：每轴的插值偏差都不超过 tolerance（压缩承诺的误差上界）
+      const deviation = Math.max(
+        maxChannelDeviation(
+          track.x.map((f) => f.value),
+          result.x
+        ),
+        maxChannelDeviation(
+          track.y.map((f) => f.value),
+          result.y
+        )
+      )
       if (deviation > tolerance + 1e-9) {
         throw new Error(
           `${algorithm}: deviation ${deviation} exceeds tolerance ${tolerance}`
@@ -77,6 +83,7 @@ for (const algorithm of algorithms) {
     rows.push({
       algorithm,
       'tolerance(px)': (tolerance * SCALE).toFixed(2),
+      // 每方块 x/y 两通道的关键帧总数
       'avg keyframes': +(kept / tracks.length).toFixed(1),
       compression: `${(totalPoints / kept).toFixed(1)}x`,
       'max deviation': +maxDeviation.toFixed(4),

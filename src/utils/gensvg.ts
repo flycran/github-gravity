@@ -1,6 +1,10 @@
 import { DEFAULT_OPTIONS, SCALE, TIMESTEP } from '../const'
 import { ContributionJson, SimulationOptions, startSimulation } from './physics'
-import { buildKeyTimes, buildKeyTimesArray } from './simplifyTrajectory'
+import {
+  buildKeyTimes,
+  buildKeyTimesArray,
+  mergePositionChannels
+} from './simplifyTrajectory'
 import { withDefaults } from './withDefaults'
 
 export interface GensvgOptions extends SimulationOptions {
@@ -14,7 +18,10 @@ export interface GensvgOptions extends SimulationOptions {
   textColor?: string
   /** 启用 CSS @keyframes 动画引擎（动画声明收敛进自包含 style），默认 false 使用 SMIL animateTransform */
   css?: boolean
-  /** 自定义 CSS animation 值，仅 css 引擎有效，默认 var(--n) var(--dur) linear both */
+  /**
+   * 自定义 CSS animation 值，仅 css 引擎有效，默认 var(--n) var(--dur) linear both。
+   * 生成时按通道复制，其中 var(--n) 分别替换为 x/y/自转通道的动画名变量
+   */
   animation?: string
 }
 
@@ -27,7 +34,9 @@ export interface GensvgOptions extends SimulationOptions {
  */
 export async function gensvg(options: GensvgOptions): Promise<string> {
   const op = withDefaults(DEFAULT_OPTIONS, options)
-  const result = await startSimulation(op)
+  // SMIL 的 translate 只能消费绑定的 "x,y" 对，让模拟一并产出联合位置表达；
+  // CSS 引擎按通道独立播放，无需联合表达
+  const result = await startSimulation({ ...op, jointPosition: !op.css })
   const svgWidth = op.width * SCALE
   const svgHeight = op.height * SCALE
 
@@ -53,69 +62,68 @@ export async function gensvg(options: GensvgOptions): Promise<string> {
         : `<rect x="${-(op.size / 2) * SCALE}" y="${-(op.size / 2) * SCALE}" width="${op.size * SCALE}" height="${op.size * SCALE}" fill="${contribution.color}"/>`
 
       if (op.css) {
-        const positions = contribution.trajectory.position
-        const rotations = contribution.trajectory.rotation
-        // 位置帧节奏：压缩轨迹按 span 前缀和换算（5 位小数避免相邻帧舍入碰撞），
-        // 未压缩时为均匀分布
-        const times = buildKeyTimesArray(positions)
-        const fractions =
-          times ??
-          Array.from(
-            { length: positions.length },
-            (_, i) => i / Math.max(positions.length - 1, 1)
+        const { x, y, rotation } = contribution.trajectory
+        // 每个通道独立成动画：活跃通道生成自己的 keyframes，恒定通道折叠为
+        // 静态变量并把动画名置为 none——置 none 而非不绑定，是因为未定义的
+        // var() 会让浏览器判定整条 animation 声明无效，冻结其余通道的动画
+        const channels = [
+          {
+            frames: x,
+            suffix: 'x',
+            animVar: 'nx',
+            cssVar: '--x',
+            fmt: (v: number) => `${toSvgX(v)}px`
+          },
+          {
+            frames: y,
+            suffix: 'y',
+            animVar: 'ny',
+            cssVar: '--y',
+            fmt: (v: number) => `${toSvgY(v)}px`
+          },
+          ...(rotation
+            ? [
+                {
+                  frames: rotation,
+                  suffix: 'r',
+                  animVar: 'nr',
+                  cssVar: '--r',
+                  fmt: (v: number) => `${toSvgDeg(v)}deg`
+                }
+              ]
+            : [])
+        ]
+
+        const binding: string[] = []
+        for (const ch of channels) {
+          const name = `g${index}${ch.suffix}`
+          const constant = ch.frames.every(
+            (f) => f.value === ch.frames[0].value
           )
-        const offsets = fractions.map((t) => `${+(t * 100).toFixed(5)}%`)
-
-        // 自转恒定时折叠为静态变量：无动画帧、无插值，播放端零开销
-        const constantDeg =
-          rotations &&
-          rotations.length <= 2 &&
-          rotations.every((r) => r.value === rotations[0].value)
-            ? toSvgDeg(rotations[0].value)
-            : null
-
-        const binding = [`--n:g${index}`]
-        let frames = positions
-          .map(
-            (p, i) => `${offsets[i]}{--x:${toSvgX(p.x)}px;--y:${toSvgY(p.y)}px}`
-          )
-          .join('')
-
-        if (constantDeg !== null) {
-          binding.push(`--r:${constantDeg}deg`)
-        } else if (
-          rotations &&
-          rotations.length === positions.length &&
-          rotations[0].span === undefined
-        ) {
-          // 未压缩旋转与位置同帧同节奏：并入同一 keyframes，省一套动画开销
-          frames = positions
-            .map(
-              (p, i) =>
-                `${offsets[i]}{--x:${toSvgX(p.x)}px;--y:${toSvgY(p.y)}px;--r:${toSvgDeg(rotations[i].value)}deg}`
+          if (constant) {
+            binding.push(
+              `--${ch.animVar}:none`,
+              `${ch.cssVar}:${ch.fmt(ch.frames[0].value)}`
             )
-            .join('')
-        } else if (rotations) {
-          // 压缩旋转走独立时间轴：单独 keyframes 挂到第二个动画名上，
-          // 帧数与节奏都不再随位置通道牵制
-          const rotFractions =
-            buildKeyTimesArray(rotations) ??
+            continue
+          }
+          // 帧节奏：压缩轨迹按 span 前缀和换算（5 位小数避免相邻帧舍入碰撞），
+          // 未压缩时为均匀分布
+          const times = buildKeyTimesArray(ch.frames)
+          const fractions =
+            times ??
             Array.from(
-              { length: rotations.length },
-              (_, i) => i / Math.max(rotations.length - 1, 1)
+              { length: ch.frames.length },
+              (_, i) => i / Math.max(ch.frames.length - 1, 1)
             )
-          const rotOffsets = rotFractions.map(
-            (t) => `${+(t * 100).toFixed(5)}%`
-          )
+          const offsets = fractions.map((t) => `${+(t * 100).toFixed(5)}%`)
           keyframesRules.push(
-            `@keyframes g${index}r{${rotations
-              .map((r, i) => `${rotOffsets[i]}{--r:${toSvgDeg(r.value)}deg}`)
+            `@keyframes ${name}{${ch.frames
+              .map((f, i) => `${offsets[i]}{${ch.cssVar}:${ch.fmt(f.value)}}`)
               .join('')}}`
           )
-          binding.push(`--nr:g${index}r`)
+          binding.push(`--${ch.animVar}:${name}`)
         }
-
-        keyframesRules.push(`@keyframes g${index}{${frames}}`)
         bindingRules.push(`[data-g${index}]{${binding.join(';')}}`)
 
         return `\
@@ -124,23 +132,27 @@ ${shapeElement}\
 </g>`
       }
 
-      const positions = contribution.trajectory.position
-      const rotations = contribution.trajectory.rotation
-      const values = positions
-        .map(({ x, y }) => `${toSvgX(x)},${toSvgY(y)}`)
-        .join(';')
+      const { x, y, rotation, joint } = contribution.trajectory
 
-      // 开启压缩后各段时间跨度不同，需要 keyTimes 还原真实节奏；未压缩时为 null，走 SMIL 默认均分
-      const keyTimes = buildKeyTimes(positions)
-      const keyTimesAttr = keyTimes ? ` keyTimes="${keyTimes}"` : ''
+      // translate 帧优先用联合位置压缩的结果（帧数最少）；调试或未启用
+      // 联合压缩时退回 x/y 通道的时间轴并集重采样，视觉等价
+      const merged = joint
+        ? { points: joint, keyTimes: buildKeyTimesArray(joint) }
+        : mergePositionChannels(x, y)
+      const values = merged.points
+        .map((p) => `${toSvgX(p.x)},${toSvgY(p.y)}`)
+        .join(';')
+      const keyTimesAttr = merged.keyTimes
+        ? ` keyTimes="${merged.keyTimes.join(';')}"`
+        : ''
 
       // 自转通道按自身 span 换算 keyTimes，与平移动画的时间轴互不牵制
       let rotateAnim = ''
-      if (rotations) {
-        const rotKeyTimes = buildKeyTimes(rotations)
+      if (rotation) {
+        const rotKeyTimes = buildKeyTimes(rotation)
         const rotKeyTimesAttr = rotKeyTimes ? ` keyTimes="${rotKeyTimes}"` : ''
         rotateAnim = `\
-<animateTransform attributeName="transform" attributeType="XML" type="rotate" additive="sum" values="${rotations
+<animateTransform attributeName="transform" attributeType="XML" type="rotate" additive="sum" values="${rotation
           .map((r) => toSvgDeg(r.value))
           .join(';')}"${rotKeyTimesAttr} dur="${dur}" fill="freeze"/>`
       }
@@ -164,11 +176,15 @@ ${rotateAnim}\
   ].join('')
   const cssRotateTemplate = isCircle ? '' : ' rotate(var(--r))'
 
-  // 方形公共动画追加自转动画项；自转并入位置 keyframes 或已折叠为静态时
-  // --nr 悬空，浏览器忽略无 keyframes 的动画项，不影响其余动画
-  const cssAnimation = isCircle
-    ? op.animation
-    : `${op.animation},var(--nr) var(--dur) linear both`
+  // 公共动画逐通道声明：用户模板里的 var(--n) 按通道替换为对应动画名变量，
+  // 每个方块的绑定规则保证变量总有值（恒定通道为 none，动画项安全关闭）
+  const channelAnim = (v: string) =>
+    op.animation.replaceAll('var(--n)', `var(--${v})`)
+  const cssAnimation = [
+    channelAnim('nx'),
+    channelAnim('ny'),
+    ...(isCircle ? [] : [channelAnim('nr')])
+  ].join(',')
 
   // animation 值拼进 CDATA 内的规则体，花括号、分号或 CDATA 结束符都会提前
   // 退出声明作用域、撕碎整个 style 块

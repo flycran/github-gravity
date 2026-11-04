@@ -24,10 +24,11 @@ inputs:
   compression-tolerance:
     description: >-
       Trajectory compression tolerance in SVG pixels. At every original moment of the
-      animation, the interpolated position stays within this distance of the real one,
-      which shrinks the SVG at the cost of a small visual approximation. 0 keeps the
-      trajectory lossless in both position and timing (only uniform straight segments
-      and pauses are compressed).
+      animation, the interpolated position stays within this distance of the real one
+      (per axis with the CSS engine, combined offset with SMIL), which shrinks the SVG
+      at the cost of a small visual approximation. 0 keeps the trajectory lossless in
+      both position and timing (only uniform straight segments and pauses are
+      compressed).
     required: false
     default: '0.5'
   compression-algorithm:
@@ -83,10 +84,11 @@ inputs:
   animation:
     description: >-
       Custom CSS animation value applied to every block. Only effective with css: true.
-      Default: var(--n) var(--dur) linear both. Available variables: --n is the
-      block's keyframes name, --dur is the playback duration. Modify with caution:
-      a wrong value breaks the animation effect. Must not contain braces,
-      semicolons or "]]>".
+      Default: var(--n) var(--dur) linear both. Applied once per axis (x, y and
+      rotation), with var(--n) replaced by that axis' keyframes name. Available
+      variables: --n is the per-axis keyframes name placeholder, --dur is the playback
+      duration. Modify with caution: a wrong value breaks the animation effect. Must
+      not contain braces, semicolons or "]]>".
     required: false
   width:
     description: >-

@@ -1,7 +1,4 @@
-import type {
-  PositionKeyframe,
-  RotationKeyframe
-} from '../src/utils/simplifyTrajectory'
+import type { ChannelKeyframe } from '../src/utils/simplifyTrajectory'
 
 /** 用 span 还原每个保留点的原始索引 */
 function restoreIndices(frames: { span?: number }[]): number[] {
@@ -15,11 +12,11 @@ function restoreIndices(frames: { span?: number }[]): number[] {
 /**
  * 原始轨迹相对简化结果的最大时刻插值偏差：
  * 对每个原始点，按其所属关键帧段的线性插值求该时刻的位置误差。
- * 这正是播放时观众可见的最大位移误差，也是压缩算法承诺的误差上界。
+ * 这正是播放时观众可见的最大位移误差。
  */
 export function maxLerpDeviation(
   track: { x: number; y: number }[],
-  simplified: PositionKeyframe[]
+  simplified: { x: number; y: number; span?: number }[]
 ): number {
   const indices = restoreIndices(simplified)
 
@@ -41,12 +38,12 @@ export function maxLerpDeviation(
 }
 
 /**
- * 原始角度序列相对简化结果的最大时刻插值偏差（弧度），
- * 与 maxLerpDeviation 同口径，用于校验旋转通道压缩的误差上界。
+ * 原始采样序列相对简化结果的最大时刻插值偏差，
+ * 与 maxLerpDeviation 同口径的单轴版本，用于校验通道压缩的误差上界。
  */
-export function maxSpinDeviation(
+export function maxChannelDeviation(
   track: number[],
-  simplified: RotationKeyframe[]
+  simplified: ChannelKeyframe[]
 ): number {
   const indices = restoreIndices(simplified)
 

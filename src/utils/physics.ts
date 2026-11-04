@@ -51,7 +51,7 @@ export class Contribution implements ContributionJson {
   y: number
   color: string
 
-  /** 采样轨迹：位置通道每帧记录，自转角通道仅方形记录 */
+  /** 采样轨迹：x/y 通道每帧记录，自转角通道仅方形记录 */
   trajectory: Trajectory
 
   /** 自转角 */
@@ -72,8 +72,8 @@ export class Contribution implements ContributionJson {
     this.x = pos.x
     this.y = pos.y
     this.trajectory = trackRotation
-      ? { position: [], rotation: [] }
-      : { position: [] }
+      ? { x: [], y: [], rotation: [] }
+      : { x: [], y: [] }
     this.recordSample(pos)
   }
 
@@ -81,11 +81,12 @@ export class Contribution implements ContributionJson {
     this.recordSample(this.collider.translation())
   }
 
-  /** 记录当前时刻的位姿采样：位置入位置通道，解缠绕后的自转角入旋转通道 */
+  /** 记录当前时刻的位姿采样：坐标入各自通道，解缠绕后的自转角入旋转通道 */
   private recordSample(pos: { x: number; y: number }): void {
     this.x = pos.x
     this.y = pos.y
-    this.trajectory.position.push({ x: pos.x, y: pos.y })
+    this.trajectory.x.push({ value: pos.x })
+    this.trajectory.y.push({ value: pos.y })
     if (!this.trackRotation) return
     const rotations = this.trajectory.rotation!
     const prev = rotations[rotations.length - 1]?.value ?? 0
@@ -98,8 +99,9 @@ export class Contribution implements ContributionJson {
 
   /** 移除各通道轨迹末尾 count 个采样 */
   truncateTail(count: number) {
-    const kept = Math.max(1, this.trajectory.position.length - count)
-    this.trajectory.position.length = kept
+    const kept = Math.max(1, this.trajectory.x.length - count)
+    this.trajectory.x.length = kept
+    this.trajectory.y.length = kept
     if (this.trajectory.rotation) {
       this.trajectory.rotation.length = kept
     }
@@ -228,11 +230,17 @@ export interface SimulationOptions {
   /** 字体大小 */
   fontSize?: number
   /**
-   * 轨迹压缩容差，单位 SVG 像素。播放时每个原始时刻的插值位置与真实位置的偏差不超过该值
+   * 轨迹压缩容差，单位 SVG 像素。播放时每个原始时刻的插值坐标与真实坐标
+   * 在横向、纵向上各自的偏差不超过该值
    */
   compressionTolerance?: number
   /** 禁用轨迹压缩，保留完整轨迹。调试用途，action无法禁用压缩 */
   disableCompression?: boolean
+  /**
+   * 同时产出联合位置表达（x/y 共享时间轴），供 SMIL 这类无法单轴插值的
+   * 引擎使用。拆分通道折点错开时联合帧数更少，体积更省
+   */
+  jointPosition?: boolean
   /**
    * 轨迹压缩算法：Greedy（单遍贪心，快，默认）、DP（动态规划全局最优，长轨迹秒级）、
    * RDP（时空版 Ramer-Douglas-Peucker，最快，关键帧略多）
@@ -416,6 +424,7 @@ export async function startSimulation(
     compressionAlgorithm,
     compressionTolerance,
     disableCompression,
+    jointPosition,
     maxSimulationTime,
     speed
   } = withDefaults(DEFAULT_OPTIONS, options)
@@ -498,7 +507,8 @@ export async function startSimulation(
               json.trajectory,
               tolerance,
               shape === 'square' ? MAX_ROTATION_ERROR : 0,
-              compressionAlgorithm
+              compressionAlgorithm,
+              jointPosition
             )
           }
         : json

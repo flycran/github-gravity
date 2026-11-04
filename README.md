@@ -41,7 +41,7 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 | `text` | ❌ | `username` value | Text to display as collision obstacles |
 | `output-path` | ❌ | `gravity.svg` | Path to write the generated SVG file |
 | `font-size` | ❌ | `48` | Font size of the collision text |
-| `compression-tolerance` | ❌ | `0.5` | Trajectory compression tolerance in SVG pixels. At every original moment, the animated position stays within this distance of the real one; `0` is lossless in both position and timing (see below) |
+| `compression-tolerance` | ❌ | `0.5` | Trajectory compression tolerance in SVG pixels. At every original moment the animated position stays within this distance of the real one (per axis with CSS, combined offset with SMIL); `0` is lossless in both position and timing (see below) |
 | `compression-algorithm` | ❌ | `Greedy` | Trajectory compression algorithm: `Greedy` (fast), `DP` (smallest SVG), `RDP` (fastest). See below for the trade-offs |
 | `max-simulation-time` | ❌ | - | Maximum animation playback duration in seconds. Once reached, blocks freeze where they are instead of waiting for every block to settle. Leave empty to play until all blocks rest |
 | `shape` | ❌ | `circle` | Shape of contribution blocks: `circle` or `square` |
@@ -62,10 +62,16 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 
 ### Reducing file size
 
-The trajectory is compressed by default: `compression-tolerance` merges
-trajectory points into keyframes so that, at every original moment, the interpolated
-position stays within the given distance (in SVG pixels) of the real one — speed changes
-such as bounces, landings and stops keep their real pace.
+The trajectory is compressed by default: `compression-tolerance` merges trajectory
+points into keyframes so that, at every original moment, the interpolated position
+stays within the given distance (in SVG pixels) of the real one — speed changes such
+as bounces, landings and stops keep their real pace.
+
+With the CSS engine each axis is compressed independently: the bound applies to each
+axis, constant axes (a block falling straight down barely moves horizontally) collapse
+into static values, and a fast-spinning block no longer densifies the position
+animation. SMIL keeps a shared position timeline, which uses slightly more keyframes
+but produces a byte-identical output to earlier versions.
 
 The default is invisible to the eye and already shrinks the output by orders of magnitude,
 so most setups can keep it. Set `0` for a lossless trajectory — only uniform straight
@@ -97,12 +103,14 @@ same trajectory at the same pace:
 The rendered animation is identical. Choose CSS when the target environment handles
 SMIL poorly — some sanitizers strip SMIL animation elements, while CSS animation in
 SVG is more widely supported (GitHub READMEs load SVGs via `<img>`, where both work).
-The CSS output is slightly larger than SMIL.
+The CSS output is usually smaller, since it compresses each axis (and the rotation)
+independently and drops animations for axes that never move.
 
 With `css: true`, the `animation` input replaces the animation declaration applied to
-every block. Available variables:
+every block. Each axis (x, y and rotation) gets its own copy of this declaration, with
+`var(--n)` replaced by that axis' animation name. Available variables:
 
-- `--n` — each block's keyframes name, required
+- `--n` — placeholder for each axis' keyframes name, required
 - `--dur` — the playback duration
 
 ⚠️ This value is spliced into the generated style block as-is — modify with caution,
