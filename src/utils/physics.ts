@@ -29,7 +29,7 @@ import {
 } from './simplifyTrajectory'
 import { withDefaults } from './withDefaults'
 
-/** 压缩算法名 → 实现，供 compressionAlgorithm 选项分发 */
+/** 压缩算法名 */
 const COMPRESSION_ALGORITHMS: Record<
   NonNullable<SimulationOptions['compressionAlgorithm']>,
   (
@@ -51,7 +51,7 @@ function unwrapRotation(next: number, prev: number): number {
   return rotation
 }
 
-/** 方形自转轨迹的角度插值误差上限，与位置的压缩容差相互独立 */
+/** 方形自转轨迹的角度插值误差上限 */
 const MAX_ROTATION_ERROR = (3 * Math.PI) / 180
 
 export interface ContributionJson {
@@ -68,7 +68,7 @@ export class Contribution implements ContributionJson {
 
   trajectory: Point[]
 
-  /** 方形碰撞体会翻滚，需要记录自转角；圆形旋转不影响外观 */
+  /** 自转角 */
   trackRotation: boolean
 
   collider: Collider
@@ -96,7 +96,7 @@ export class Contribution implements ContributionJson {
     this.trajectory.push(this.recordPoint(pos))
   }
 
-  /** 记录当前时刻的位置；方形再记录自转角（解缠绕保持连续） */
+  /** 记录当前时刻的位置 */
   private recordPoint(pos: { x: number; y: number }): Point {
     if (!this.trackRotation) return { x: pos.x, y: pos.y }
     const last = this.trajectory[this.trajectory.length - 1]
@@ -111,7 +111,7 @@ export class Contribution implements ContributionJson {
     return this.trajectory
   }
 
-  /** 移除轨迹末尾 count 个点（至少保留首点） */
+  /** 移除轨迹末尾 count 个点 */
   truncateTail(count: number) {
     this.trajectory.length = Math.max(1, this.trajectory.length - count)
   }
@@ -126,9 +126,7 @@ export class Contribution implements ContributionJson {
 }
 
 /**
- * 惰性下边界：移除掉出画面底部两倍块深的贡献块（连同刚体）。
- * 该深度的方块不可见且不会再落回画面，留着只会无限下落拖垮静止判断；
- * 上方飞出的方块受重力会落回画面，不在清理范围
+ * 移除掉出画面底部两倍块深的贡献块（连同刚体）。
  */
 export function pruneFallenBlocks(
   world: World,
@@ -188,13 +186,11 @@ export interface Point {
   x: number
   y: number
   /**
-   * 方块自转角（弧度，已解缠绕保持连续，可直接线性插值）。
-   * 方形碰撞体会翻滚才记录；圆形旋转不影响外观，不携带
+   * 方块自转角
    */
   rotation?: number
   /**
-   * 启用压缩时，该点与前一个保留点的原始索引差，用于还原关键帧的时间位置；
-   * 未压缩时不存在，消费端回退到 SMIL 默认的均分时间
+   * 启用压缩时，该点与前一个保留点的原始索引差
    */
   span?: number
 }
@@ -256,57 +252,57 @@ export interface SimulationOptions {
   /** 字体大小 */
   fontSize?: number
   /**
-   * 轨迹压缩容差，单位 SVG 像素。播放时每个原始时刻的插值位置与真实位置的
-   * 偏差不超过该值；0 为完全无损（位置与节奏都精确），仅压缩匀速直线段和静止段。
+   * 轨迹压缩容差，单位 SVG 像素。播放时每个原始时刻的插值位置与真实位置的偏差不超过该值
    */
   compressionTolerance?: number
-  /** 禁用轨迹压缩，保留完整轨迹 */
+  /** 禁用轨迹压缩，保留完整轨迹。调试用途，action无法禁用压缩 */
   disableCompression?: boolean
   /**
    * 轨迹压缩算法：Greedy（单遍贪心，快，默认）、DP（动态规划全局最优，长轨迹秒级）、
    * RDP（时空版 Ramer-Douglas-Peucker，最快，关键帧略多）
    */
   compressionAlgorithm?: 'Greedy' | 'DP' | 'RDP'
-  /** 贡献方块的形状：circle（圆形）或 square（方形） */
+  /**
+   * 贡献方块的形状：
+   * - circle 圆形
+   * - square 方形
+   */
   shape?: 'circle' | 'square'
-  /** 贡献方块的摩擦系数，默认 0.3 */
+  /** 贡献方块的摩擦系数 */
   friction?: number
-  /** 贡献方块的弹性（碰撞恢复系数），默认 0 */
+  /** 贡献方块的弹性（碰撞恢复系数） */
   restitution?: number
   /**
-   * 物理世界宽度，默认 300。
+   * 物理世界宽度。
    * 谨慎修改：方块横向布局、文字居中位置与最终 SVG 宽度都由它推算，改动后请自行核对效果
    */
   width?: number
   /**
-   * 物理世界高度，默认 150。
+   * 物理世界高度。
    * 谨慎修改：方块起始高度、文字纵向位置与最终 SVG 高度都由它推算，改动后请自行核对效果
    */
   height?: number
   /**
-   * 贡献方块边长，默认 4。
-   * 谨慎修改：边长越大越容易相互挤压甚至穿透文字，改动后请自行核对效果
+   * 贡献方块边长。
+   * 谨慎修改：边长过大会让方块矩阵超出世界边界，改动后请自行核对效果
    */
   size?: number
   /**
-   * 贡献方块间距，默认 1.5。
-   * 谨慎修改：间距过小会互相堆叠，过大会超出世界边界，改动后请自行核对效果
+   * 贡献方块间距。
+   * 谨慎修改：间距过大会让方块矩阵超出世界边界，改动后请自行核对效果
    */
   interval?: number
   /**
-   * 最大模拟时间（秒，按动画播放时长计），没有默认值。
+   * 最大模拟时间（秒，按动画播放时长计）。
    * 模拟时长达到它乘以播放速度后停止模拟，直接返回已模拟出的轨迹，
-   * 不再等待全部方块静止；不传则一直模拟到全部静止，
-   * 超出 MAX_STEPS 步仍未静止会直接报错
    */
   maxSimulationTime?: number
   /**
    * 自定义字体（.ttf/.otf）：本地路径、远程 URL（字符串或 URL 对象），或
-   * 已读取好的 Buffer / ArrayBuffer（如 `files[0].arrayBuffer()` 的结果），
+   * Buffer / ArrayBuffer，
    * 默认使用内置的 Liberation Serif Bold。
    * 谨慎修改：轮廓不规整（未闭合、自相交等）的字体，分解出的碰撞形状可能不可靠；
-   * 另有部分字体因 opentype.js 的 GSUB 解析限制无法使用。
-   * 字体度量差异也可能导致文字位置和碰撞形态需要重新调整
+   * 另有部分字体因 opentype.js 的 GSUB 解析限制无法使用
    */
   font?: FontSource
 }
@@ -314,7 +310,7 @@ export interface SimulationOptions {
 /** 创建完成的世界与其中的物体引用，可交给渲染器预览或自行迭代 */
 export interface SimulationWorld {
   world: World
-  /** 贡献方块（含轨迹记录器），每步迭代后调用 update 采集轨迹 */
+  /** 贡献方块 */
   contributions: Contribution[]
   textPaths: TextPathResult[]
   /** 文字在物理世界中的 X 偏移量 */
@@ -325,8 +321,6 @@ export interface SimulationWorld {
 
 /**
  * 创建模拟世界并放入全部物体：地面、墙壁、用户名文字碰撞体与贡献方块。
- * 与迭代逻辑分离，便于把 world 交给渲染器（如 web/rapier 调试页）直接预览；
- * startSimulation 在它返回后负责迭代与轨迹收集
  */
 export async function createSimulationWorld(
   options: SimulationOptions
@@ -434,6 +428,9 @@ export async function createSimulationWorld(
   }
 }
 
+/**
+ * 开始模拟
+ */
 export async function startSimulation(
   options: SimulationOptions
 ): Promise<SimulationResult> {
@@ -450,7 +447,6 @@ export async function startSimulation(
     await createSimulationWorld(options)
 
   // 容差从 SVG 像素换算回物理坐标单位，让压缩函数与渲染缩放解耦；
-  // 显式禁用压缩时保留原始轨迹，消费端回退到 SMIL 默认均分时间
   const tolerance = compressionTolerance / SCALE
 
   /** 判断所有贡献块的刚体是否都已静止（线速度与角速度均低于阈值） */
@@ -490,7 +486,6 @@ export async function startSimulation(
     stillFrames = areAllCollidersSleeping() ? stillFrames + 1 : 0
     if (stillFrames >= SETTLE_CONFIRM_FRAMES) {
       // 确认静止多记录了 SETTLE_CONFIRM_FRAMES 帧，其间所有物体均已不再移动，
-      // 各轨迹同步截掉这些帧保持长度一致，总时长相应缩短到实际静止时刻
       stepCount -= SETTLE_CONFIRM_FRAMES
       for (const contribution of contributions) {
         contribution.truncateTail(SETTLE_CONFIRM_FRAMES)
@@ -504,7 +499,7 @@ export async function startSimulation(
     ) {
       break
     }
-    // 方块参数异常时模拟可能永不静止，未设时限时超出保护步数直接报错而不是无限挂起
+    // 方块参数异常时模拟可能永不静止，未设时限时超出保护步数直接报错
     if (maxSimulationTime === undefined && stepCount >= MAX_STEPS) {
       throw new Error(
         `Simulation failed to settle within ${MAX_STEPS} steps (${MAX_STEPS * TIMESTEP} simulated seconds)`

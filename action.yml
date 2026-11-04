@@ -27,12 +27,12 @@ inputs:
       animation, the interpolated position stays within this distance of the real one,
       which shrinks the SVG at the cost of a small visual approximation. 0 keeps the
       trajectory lossless in both position and timing (only uniform straight segments
-      and pauses are compressed); the default fits most cases.
+      and pauses are compressed).
     required: false
     default: '0.5'
   compression-algorithm:
     description: >-
-      Trajectory compression algorithm: Greedy (default) is fast with near-optimal
+      Trajectory compression algorithm: Greedy is fast with near-optimal
       results; DP finds the globally fewest keyframes (smallest SVG) but can take
       seconds on long trajectories; RDP is the fastest with somewhat more keyframes.
       All algorithms preserve speed and timing — bounces and stops stay keyframes.
@@ -40,13 +40,12 @@ inputs:
     default: Greedy
   max-simulation-time:
     description: >-
-      Maximum simulation time in seconds, counted as animation playback duration:
-      the simulated time is this value multiplied by the playback speed. When reached,
-      the simulation stops and the trajectory simulated so far is returned instead of
-      waiting for every block to settle. Leave empty to simulate until all blocks rest.
+      Maximum animation playback duration in seconds. Once the animation reaches
+      it, blocks freeze where they are instead of waiting for every block to
+      settle. Leave empty to play until all blocks rest.
     required: false
   shape:
-    description: Shape of the contribution blocks (circle or square). Circle has smoother physics and less likely to clip through obstacles.
+    description: Shape of the contribution blocks (circle or square).
     required: false
     default: circle
   text-top:
@@ -63,22 +62,22 @@ inputs:
     default: black
   scale:
     description: >-
-      Display zoom factor: the SVG width and height attributes are the physics
-      dimensions multiplied by it, while the viewBox keeps the raw physics size.
+      Overall zoom applied to the final SVG. It does not change the actual
+      size of the physics world.
     required: false
     default: '3'
   speed:
     description: >-
-      Playback speed multiplier: the animation duration is the simulated time
-      divided by it.
+      Playback speed multiplier: the higher the value, the faster the
+      animation plays.
     required: false
     default: '3'
   css:
     description: >-
-      Use the CSS animation engine (a self-contained style block with @keyframes,
-      animations bound via data-date selectors) instead of SMIL animateTransform.
+      Render the animation with CSS animation (the only engine the animation
+      input works with) instead of SMIL animateTransform.
       Both stay a single static SVG file; CSS plays more reliably in environments
-      with poor SMIL support, and stays visually identical. Default: false.
+      with poor SMIL support, and stays visually identical.
     required: false
     default: 'false'
   animation:
@@ -103,14 +102,14 @@ inputs:
     default: '150'
   size:
     description: >-
-      Side length of each contribution block. Change with caution: larger blocks are more
-      likely to squeeze against each other or clip through the text.
+      Side length of each contribution block. Change with caution: too large
+      pushes the block matrix out of the world bounds.
     required: false
     default: '4'
   interval:
     description: >-
-      Spacing between contribution blocks. Change with caution: too small makes blocks overlap,
-      too large pushes them out of the world bounds.
+      Spacing between contribution blocks. Change with caution: too large
+      pushes the block matrix out of the world bounds.
     required: false
     default: '1.5'
   friction:
@@ -120,9 +119,8 @@ inputs:
     default: '0.3'
   restitution:
     description: >-
-      Restitution (bounciness) of the contribution blocks. Values far from 0 may fling
-      blocks out of the visible area; such blocks are removed once they fall below the
-      world bottom.
+      Restitution (bounciness) of the contribution blocks. Values far from 0
+      may fling blocks out of the visible area.
     required: false
     default: '0'
   font-path:
@@ -130,8 +128,7 @@ inputs:
       Path to a custom font (.ttf/.otf), relative to the repository root, or an http(s) URL.
       Defaults to the bundled Liberation Serif Bold. Use with caution: some fonts contain open
       or self-intersecting contours that the triangulation algorithm rejects, and some cannot
-      be parsed by opentype.js at all; different font metrics may also require re-tuning
-      font-size and text-top.
+      be parsed by opentype.js at all.
     required: false
 
 outputs:

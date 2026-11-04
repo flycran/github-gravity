@@ -22,8 +22,6 @@ export interface GensvgOptions extends SimulationOptions {
  * 生成贡献方块重力模拟的 SVG 动画字符串。
  * 模拟 GitHub 用户的贡献方块从上方掉落，最终静止在底部。
  *
- * 输出为单行 SVG：模板以行尾反斜杠续行，换行与缩进不进产物。
- *
  * @param options - 包含 GitHub 用户名
  * @returns 完整的 SVG 字符串
  */
@@ -133,8 +131,7 @@ ${rotateAnim}\
     )
   }
 
-  // 非默认行为：linear（CSS 默认 ease）；transform-origin 0 0（SVG 元素默认参考
-  // viewBox 中心）；CDATA（style 处于 XML 解析上下文，<length> 会被当标签解析）；
+  // CDATA（style 处于 XML 解析上下文，<length> 会被当标签解析）；
   // animation 默认值 = 变量注入的动画名与时长 + linear + 末帧冻结与首帧前的位置兜底
   const styleSvg = op.css
     ? `\

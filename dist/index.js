@@ -28803,10 +28803,8 @@ const VELOCITY_THRESHOLD = 0.1;
 const SETTLE_CONFIRM_FRAMES = 15;
 /** 未设置最大模拟时间时的模拟步数上限，超出视为无法收敛，直接抛错终止模拟 */
 const MAX_STEPS = 9000;
-// 先取值再构造 URL，避免打包器把「new URL(字面量, import.meta.url)」识别为资源声明
-// 而重排内置字体的输出位置
 const BUNDLED_FONT_HREF = '../public/LiberationSerif-Bold.ttf';
-/** 内置字体：轮廓闭合规整，能稳定三角化 */
+/** 内置字体 */
 const DEFAULT_FONT = new URL(BUNDLED_FONT_HREF, import.meta.url);
 const DEFAULT_OPTIONS = {
     width: 300,
@@ -45979,25 +45977,22 @@ function serializePathData(path) {
 function viewToArrayBuffer(view) {
     return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
 }
-/** 从本地路径读取字体文件（相对路径按当前工作目录解析） */
+/** 从本地路径读取字体文件 */
 async function loadFontFromPath(fontPath) {
-    // node 模块按需加载：只有真正读取本地文件时才需要，浏览器环境不会引入它们
     const [{ readFileSync }, { resolve }] = await Promise.all([
         import('node:fs'),
         import('node:path')
     ]);
-    // 相对路径按当前工作目录解析：模块自身路径在打包后会被压平，不能作为参照基准
     const resolvedPath = resolve(fontPath);
     try {
         return viewToArrayBuffer(readFileSync(resolvedPath));
     }
     catch (error) {
-        // 带上底层原因：读取失败可能是文件不存在，解析失败可能是不支持的文件格式
         const reason = error instanceof Error ? error.message : String(error);
         throw new Error(`Failed to load font "${resolvedPath}" (only .ttf/.otf are supported): ${reason}`, { cause: error });
     }
 }
-/** 从 URL 下载字体文件，支持 file: 与 http(s): 协议 */
+/** 从 URL 下载字体文件 */
 async function loadFontFromUrl(fontUrl) {
     let url;
     try {
@@ -46207,12 +46202,6 @@ function simplifyTrajectoryDP(trajectory, tolerance = 0, maxRotationError = 0) {
  * 递归分裂，每次在当前段内找时刻插值偏差最大的点作为新关键帧，
  * 直到所有被丢弃点的偏差都落入容差。
  *
- * 保证：
- * - 首尾点必保留，返回点按原始顺序排列；
- * - 任意被丢弃点在其原始时刻与相邻关键帧插值位置的偏差不超过 tolerance；
- * - 贪心分裂非全局最优，关键帧数一般多于动态规划；
- * - span >= 1（首点为 0），span 总和等于原始点数 - 1。
- *
  * @param maxRotationError 含义同 simplifyTrajectoryDP 的同名参数
  */
 function simplifyTrajectoryRDP(trajectory, tolerance = 0, maxRotationError = 0) {
@@ -46264,12 +46253,6 @@ function simplifyTrajectoryRDP(trajectory, tolerance = 0, maxRotationError = 0) 
  * 轨迹压缩——单遍贪心最长段：
  * 从当前关键帧出发不断扩展段尾，直到加入下一点会使段内某点的
  * 时刻插值偏差超出容差，此时该段尾即为下一个关键帧。
- *
- * 保证：
- * - 首尾点必保留，返回点按原始顺序排列；
- * - 任意被丢弃点在其原始时刻与相邻关键帧插值位置的偏差不超过 tolerance；
- * - 单遍、不回溯，关键帧数通常介于 RDP 与动态规划之间；
- * - span >= 1（首点为 0），span 总和等于原始点数 - 1。
  *
  * @param maxRotationError 含义同 simplifyTrajectoryDP 的同名参数
  */
@@ -46327,8 +46310,6 @@ function buildKeyTimes(trajectory) {
 
 /**
  * 合并默认值与用户选项，跳过值为 undefined 的属性。
- * Object.assign / spread 会用 undefined 覆盖已有值，调用端"未填写"的字段
- * 会抹掉默认值；这里保证键携带 undefined 与键不存在等效，调用端无需逐字段过滤
  */
 function withDefaults(defaults, overrides) {
     const filtered = {};
@@ -46340,7 +46321,7 @@ function withDefaults(defaults, overrides) {
     return Object.assign({ ...defaults }, filtered);
 }
 
-/** 压缩算法名 → 实现，供 compressionAlgorithm 选项分发 */
+/** 压缩算法名 */
 const COMPRESSION_ALGORITHMS = {
     DP: simplifyTrajectoryDP,
     RDP: simplifyTrajectoryRDP,
@@ -46355,7 +46336,7 @@ function unwrapRotation(next, prev) {
         rotation += Math.PI * 2;
     return rotation;
 }
-/** 方形自转轨迹的角度插值误差上限，与位置的压缩容差相互独立 */
+/** 方形自转轨迹的角度插值误差上限 */
 const MAX_ROTATION_ERROR = (3 * Math.PI) / 180;
 class Contribution {
     date;
@@ -46363,7 +46344,7 @@ class Contribution {
     y;
     color;
     trajectory;
-    /** 方形碰撞体会翻滚，需要记录自转角；圆形旋转不影响外观 */
+    /** 自转角 */
     trackRotation;
     collider;
     constructor(contributionDay, collider, trackRotation) {
@@ -46383,7 +46364,7 @@ class Contribution {
         this.y = pos.y;
         this.trajectory.push(this.recordPoint(pos));
     }
-    /** 记录当前时刻的位置；方形再记录自转角（解缠绕保持连续） */
+    /** 记录当前时刻的位置 */
     recordPoint(pos) {
         if (!this.trackRotation)
             return { x: pos.x, y: pos.y };
@@ -46397,7 +46378,7 @@ class Contribution {
     getTrajectory() {
         return this.trajectory;
     }
-    /** 移除轨迹末尾 count 个点（至少保留首点） */
+    /** 移除轨迹末尾 count 个点 */
     truncateTail(count) {
         this.trajectory.length = Math.max(1, this.trajectory.length - count);
     }
@@ -46410,9 +46391,7 @@ class Contribution {
     }
 }
 /**
- * 惰性下边界：移除掉出画面底部两倍块深的贡献块（连同刚体）。
- * 该深度的方块不可见且不会再落回画面，留着只会无限下落拖垮静止判断；
- * 上方飞出的方块受重力会落回画面，不在清理范围
+ * 移除掉出画面底部两倍块深的贡献块（连同刚体）。
  */
 function pruneFallenBlocks(world, contributions, size) {
     for (let i = contributions.length - 1; i >= 0; i--) {
@@ -46465,8 +46444,6 @@ function getTextBoundBox(textPaths, { width, height, textTop }) {
 }
 /**
  * 创建模拟世界并放入全部物体：地面、墙壁、用户名文字碰撞体与贡献方块。
- * 与迭代逻辑分离，便于把 world 交给渲染器（如 web/rapier 调试页）直接预览；
- * startSimulation 在它返回后负责迭代与轨迹收集
  */
 async function createSimulationWorld(options) {
     const { username, text = username, textTop, shape, font, size, interval, fontSize, width, height, friction, restitution } = withDefaults(DEFAULT_OPTIONS, options);
@@ -46538,11 +46515,13 @@ async function createSimulationWorld(options) {
         centerY
     };
 }
+/**
+ * 开始模拟
+ */
 async function startSimulation(options) {
     const { shape, size, compressionAlgorithm, compressionTolerance, disableCompression, maxSimulationTime, speed } = withDefaults(DEFAULT_OPTIONS, options);
     const { world, contributions, textPaths, offsetX, centerY } = await createSimulationWorld(options);
     // 容差从 SVG 像素换算回物理坐标单位，让压缩函数与渲染缩放解耦；
-    // 显式禁用压缩时保留原始轨迹，消费端回退到 SMIL 默认均分时间
     const tolerance = compressionTolerance / SCALE;
     /** 判断所有贡献块的刚体是否都已静止（线速度与角速度均低于阈值） */
     function areAllCollidersSleeping() {
@@ -46575,7 +46554,6 @@ async function startSimulation(options) {
         stillFrames = areAllCollidersSleeping() ? stillFrames + 1 : 0;
         if (stillFrames >= SETTLE_CONFIRM_FRAMES) {
             // 确认静止多记录了 SETTLE_CONFIRM_FRAMES 帧，其间所有物体均已不再移动，
-            // 各轨迹同步截掉这些帧保持长度一致，总时长相应缩短到实际静止时刻
             stepCount -= SETTLE_CONFIRM_FRAMES;
             for (const contribution of contributions) {
                 contribution.truncateTail(SETTLE_CONFIRM_FRAMES);
@@ -46587,7 +46565,7 @@ async function startSimulation(options) {
             stepCount * TIMESTEP >= maxSimulationTime * speed) {
             break;
         }
-        // 方块参数异常时模拟可能永不静止，未设时限时超出保护步数直接报错而不是无限挂起
+        // 方块参数异常时模拟可能永不静止，未设时限时超出保护步数直接报错
         if (maxSimulationTime === undefined && stepCount >= MAX_STEPS) {
             throw new Error(`Simulation failed to settle within ${MAX_STEPS} steps (${MAX_STEPS * TIMESTEP} simulated seconds)`);
         }
@@ -46617,8 +46595,6 @@ async function startSimulation(options) {
 /**
  * 生成贡献方块重力模拟的 SVG 动画字符串。
  * 模拟 GitHub 用户的贡献方块从上方掉落，最终静止在底部。
- *
- * 输出为单行 SVG：模板以行尾反斜杠续行，换行与缩进不进产物。
  *
  * @param options - 包含 GitHub 用户名
  * @returns 完整的 SVG 字符串
@@ -46706,8 +46682,7 @@ ${rotateAnim}\
     if (op.css && (/[{};]/.test(op.animation) || op.animation.includes(']]>'))) {
         throw new Error(`Invalid animation "${op.animation}": must not contain braces, semicolons or "]]>"`);
     }
-    // 非默认行为：linear（CSS 默认 ease）；transform-origin 0 0（SVG 元素默认参考
-    // viewBox 中心）；CDATA（style 处于 XML 解析上下文，<length> 会被当标签解析）；
+    // CDATA（style 处于 XML 解析上下文，<length> 会被当标签解析）；
     // animation 默认值 = 变量注入的动画名与时长 + linear + 末帧冻结与首帧前的位置兜底
     const styleSvg = op.css
         ? `\
@@ -46764,21 +46739,6 @@ function getAlgorithm(name) {
 }
 /**
  * GitHub Action 入口：生成 GitHub 贡献图重力跌落动画 SVG。
- *
- * 输入参数：
- * - username: GitHub 用户名（必填）
- * - text: 显示的文字，默认为 username
- * - output-path: SVG 输出路径，默认为 gravity.svg
- * - font-size: 文字大小，默认为 48
- * - compression-tolerance: 轨迹压缩容差（SVG 像素），默认为 0.5
- * - compression-algorithm: 轨迹压缩算法（Greedy / DP / RDP），默认为 Greedy
- * - max-simulation-time: 最大模拟时间（秒，按播放时长计，会乘以倍速换算模拟时长），达到后返回已模拟的轨迹；不传则模拟到静止为止
- * - scale: SVG 显示缩放，默认为 3
- * - speed: 播放倍速，默认为 3
- * - css: 启用 CSS @keyframes 动画引擎，默认为 SMIL
- * - animation: 自定义 CSS animation 值（仅 css 引擎有效），默认 var(--n) var(--dur) linear both
- * - width / height / size / interval / font-path: 高级自定义项，改动影响渲染效果
- * - friction / restitution: 贡献方块的摩擦系数与弹性，默认 0.3 / 0
  *
  * 输出：
  * - svg-path: 生成的 SVG 文件路径

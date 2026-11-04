@@ -141,12 +141,6 @@ export function simplifyTrajectoryDP(
  * 递归分裂，每次在当前段内找时刻插值偏差最大的点作为新关键帧，
  * 直到所有被丢弃点的偏差都落入容差。
  *
- * 保证：
- * - 首尾点必保留，返回点按原始顺序排列；
- * - 任意被丢弃点在其原始时刻与相邻关键帧插值位置的偏差不超过 tolerance；
- * - 贪心分裂非全局最优，关键帧数一般多于动态规划；
- * - span >= 1（首点为 0），span 总和等于原始点数 - 1。
- *
  * @param maxRotationError 含义同 simplifyTrajectoryDP 的同名参数
  */
 export function simplifyTrajectoryRDP(
@@ -216,12 +210,6 @@ export function simplifyTrajectoryRDP(
  * 从当前关键帧出发不断扩展段尾，直到加入下一点会使段内某点的
  * 时刻插值偏差超出容差，此时该段尾即为下一个关键帧。
  *
- * 保证：
- * - 首尾点必保留，返回点按原始顺序排列；
- * - 任意被丢弃点在其原始时刻与相邻关键帧插值位置的偏差不超过 tolerance；
- * - 单遍、不回溯，关键帧数通常介于 RDP 与动态规划之间；
- * - span >= 1（首点为 0），span 总和等于原始点数 - 1。
- *
  * @param maxRotationError 含义同 simplifyTrajectoryDP 的同名参数
  */
 export function simplifyTrajectoryGreedy(
@@ -262,10 +250,6 @@ export function simplifyTrajectoryGreedy(
  * 耗时却低一个数量级：DP 的端点对 × 段检查随轨迹长度超线性膨胀，
  * 长轨迹（数千步）会到秒级，Greedy 稳定在毫秒级。
  * 追求极致体积且能接受秒级耗时时可显式改用 simplifyTrajectoryDP。
- *
- * tolerance=0 为完全无损：只有插值精确命中的匀速直线段/静止段被合并，
- * 位置与播放节奏（速度）都不失真；tolerance>0 时保证播放中
- * 每个原始时刻的插值位置误差不超过 tolerance。
  */
 export function simplifyTrajectory(
   trajectory: Point[],

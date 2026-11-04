@@ -40,17 +40,17 @@
 | `text` | ❌ | `username` 的值 | 作为碰撞障碍物的文字 |
 | `output-path` | ❌ | `gravity.svg` | SVG 输出路径 |
 | `font-size` | ❌ | `48` | 碰撞文字大小 |
-| `compression-tolerance` | ❌ | `0.5` | 轨迹压缩容差（SVG 像素）。播放时每个原始时刻的动画位置与真实位置的偏差不超过该值。默认值适合多数场景；`0` 为完全无损（位置与节奏都精确）（见下文） |
+| `compression-tolerance` | ❌ | `0.5` | 轨迹压缩容差（SVG 像素）。播放时每个原始时刻的动画位置与真实位置的偏差不超过该值；`0` 为完全无损（位置与节奏都精确）（见下文） |
 | `compression-algorithm` | ❌ | `Greedy` | 轨迹压缩算法：`Greedy`（快）、`DP`（体积最小）、`RDP`（最快），差异见下文 |
-| `max-simulation-time` | ❌ | - | 最大模拟时间（秒），按播放时长计（模拟时间 = 该值 × `speed`）。到时即返回已模拟的轨迹，不再等待所有方块静止；留空则模拟至全部静止 |
+| `max-simulation-time` | ❌ | - | 动画最长播放时长（秒）。到时动画即止，方块停在当前位置，不再等待全部落定；留空则播放至全部静止 |
 | `shape` | ❌ | `circle` | 贡献方块的形状（`circle` 或 `square`） |
 | `friction` | ❌ | `0.3` | 贡献方块的摩擦系数 |
-| `restitution` | ❌ | `0` | 贡献方块的弹性（碰撞恢复系数），远离 0 的值可能把方块弹出画面，掉出画面底部的方块会被移除 |
+| `restitution` | ❌ | `0` | 贡献方块的弹性（碰撞恢复系数），远离 0 的值可能把方块弹出画面 |
 | `text-top` | ❌ | `50` | 文字距离世界顶部的距离，控制文字垂直位置 |
 | `background-color` | ❌ | `transparent` | SVG 背景颜色（CSS 颜色值） |
 | `text-color` | ❌ | `black` | 碰撞文字颜色（CSS 颜色值） |
-| `scale` | ❌ | `3` | 显示缩放：SVG 的 `width`/`height` 为物理尺寸 × 缩放值，viewBox 保持原始物理尺寸 |
-| `speed` | ❌ | `3` | 播放倍速：动画时长 = 模拟时间 ÷ 倍速 |
+| `scale` | ❌ | `3` | 最终 SVG 的整体缩放，不影响物理世界的实际大小 |
+| `speed` | ❌ | `3` | 动画播放倍速，数值越大播放越快 |
 | `css` | ❌ | `false` | 启用 CSS 动画引擎替代 SMIL `animateTransform`，见下文 |
 | `animation` | ❌ | `var(--n) var(--dur) linear both` | 自定义 CSS `animation` 值（仅 `css: true` 时有效）。⚠️ 谨慎修改，可能破坏动画效果 |
 | `width` | ❌ | `300` | 物理世界宽度。⚠️ 会影响布局与 SVG 尺寸 |
@@ -61,7 +61,7 @@
 
 ### 减小文件体积
 
-轨迹默认开启压缩：`compression-tolerance`（默认 `0.5`）会把轨迹点合并为关键帧，保证播放时
+轨迹默认开启压缩：`compression-tolerance` 会把轨迹点合并为关键帧，保证播放时
 每个原始时刻的插值位置与真实位置的偏差（SVG 像素）不超过阈值——碰撞、落地、停顿等速度
 变化按真实节奏保留。
 
@@ -86,15 +86,13 @@
 提供两种输出引擎；两者都输出单个静态 SVG 文件，播放轨迹与节奏完全一致：
 
 - **SMIL**（默认）：每个方块由 `<animateTransform>` 元素驱动。
-- **CSS**（`css: true`）：不再输出 animate 元素，所有动画声明收敛进单个自包含的
-  `<style>` 块，每个方块的轨迹生成一条 `@keyframes` 规则。
+- **CSS**（`css: true`）：每个方块由一条 CSS `animation` 声明驱动。
 
 渲染出的动画完全一致。当目标环境对 SMIL 支持不佳时选 CSS——部分 sanitizer 会剥除
 SMIL 动画元素，而 SVG 内的 CSS 动画支持面更广（GitHub README 以 `<img>` 加载 SVG，
 两种引擎都能正常播放）。文件体积略大于 SMIL。
 
-`css: true` 时，`animation` 输入可替换作用在每个方块上的 animation 声明，默认
-`var(--n) var(--dur) linear both`。可用变量：
+`css: true` 时，`animation` 输入可替换作用在每个方块上的 animation 声明。可用变量：
 
 - `--n`：方块绑定的关键帧名，必须包含
 - `--dur`：播放时长
@@ -107,14 +105,13 @@ web preview 里验证。值中不能包含花括号、分号或 `]]>`。
 `width`、`height`、`size`、`interval` 改动的是物理世界本身，而不只是输出尺寸。贡献方块按
 `size` 和 `interval` 排布，文字以 `width` 居中，下落高度由 `height` 决定——请成套调整并核对
 效果，不要只改其中一个。若调整后模拟无法收敛（Action 直接报错），可设置 `max-simulation-time`
-限制模拟时长，仍能拿到该时刻为止的轨迹。
+限制动画播放时长，仍能正常生成 SVG。
 
 `font-path` 用于替换碰撞字体，可以给本地 `.ttf`/`.otf` 路径，也可以直接给 `http(s)` 链接。
 默认使用内置的 Liberation Serif Bold，因为它轮廓规整、分解结果稳定。自定义字体不保证可用：
 
 - 轮廓不规整（未闭合、自相交等）的字体，碰撞体的分解结果可能不可靠、形状异常。
 - 部分字体根本无法被 opentype.js 解析（例如很常见的 DejaVu 系列，会因 GSUB 表解析失败）。
-- 字体度量不同，通常需要重新调整 `font-size` 和 `text-top`。
 
 ### 输出
 
