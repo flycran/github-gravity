@@ -46863,46 +46863,45 @@ function collectFrames(values, keep) {
  *
  * 保证：首尾点必保留、输出保序；span >= 1（首点为 0）且总和等于原始采样数 - 1
  */
-function simplifyChannel(frames, tolerance, algorithm) {
+function simplifyChannel(values, tolerance, algorithm) {
     assertTolerance(tolerance);
-    const n = frames.length;
+    const n = values.length;
     if (n === 0)
         return [];
     if (n === 1)
-        return [{ value: frames[0].value, span: 0 }];
-    const values = frames.map((f) => f.value);
+        return [{ value: values[0], span: 0 }];
     const keep = keepByAlgorithm(n, algorithm, (s, e) => channelFeasible(values, s, e, tolerance), (s, e) => channelSplit(values, s, e, tolerance));
     return collectFrames(values, keep);
 }
 /** 联合位置的段可行性：任一中间点的时刻插值欧氏偏差超限立即返回 false */
-function positionFeasible(points, s, e, limitSq) {
+function positionFeasible(xs, ys, s, e, limitSq) {
     const denom = e - s;
-    const ax = points[s].x;
-    const ay = points[s].y;
-    const dxs = points[e].x - ax;
-    const dys = points[e].y - ay;
+    const ax = xs[s];
+    const ay = ys[s];
+    const dxs = xs[e] - ax;
+    const dys = ys[e] - ay;
     for (let i = s + 1; i < e; i++) {
         const t = (i - s) / denom;
-        const dx = points[i].x - (ax + dxs * t);
-        const dy = points[i].y - (ay + dys * t);
+        const dx = xs[i] - (ax + dxs * t);
+        const dy = ys[i] - (ay + dys * t);
         if (dx * dx + dy * dy > limitSq)
             return false;
     }
     return true;
 }
 /** 联合位置的段 (s, e) 内时刻插值偏差平方最大的中间点；段可行返回 -1 */
-function positionSplit(points, s, e, limitSq) {
+function positionSplit(xs, ys, s, e, limitSq) {
     let maxSq = 0;
     let maxIdx = -1;
     const denom = e - s;
-    const ax = points[s].x;
-    const ay = points[s].y;
-    const dxs = points[e].x - ax;
-    const dys = points[e].y - ay;
+    const ax = xs[s];
+    const ay = ys[s];
+    const dxs = xs[e] - ax;
+    const dys = ys[e] - ay;
     for (let i = s + 1; i < e; i++) {
         const t = (i - s) / denom;
-        const dx = points[i].x - (ax + dxs * t);
-        const dy = points[i].y - (ay + dys * t);
+        const dx = xs[i] - (ax + dxs * t);
+        const dy = ys[i] - (ay + dys * t);
         const d = dx * dx + dy * dy;
         if (d > maxSq) {
             maxSq = d;
@@ -46915,32 +46914,44 @@ function positionSplit(points, s, e, limitSq) {
  * 联合位置压缩：x、y 共享关键帧，约束为合成位置的时刻插值偏差
  * （欧氏距离）不超过 tolerance。帧数比两个分轴通道的并集更少——
  * 一个关键帧同时承载两轴，单轴的小折点可被另一轴的容差预算吸收。
+ * 输入取两条同长数值序列，无需为两轴配对分配对象。
  */
-function simplifyPositions(points, tolerance, algorithm) {
+function simplifyPositions(xs, ys, tolerance, algorithm) {
     assertTolerance(tolerance);
-    const n = points.length;
+    const n = xs.length;
     if (n === 0)
         return [];
     if (n === 1)
-        return [{ x: points[0].x, y: points[0].y, span: 0 }];
+        return [{ x: xs[0], y: ys[0], span: 0 }];
     const limitSq = tolerance * tolerance;
-    const keep = keepByAlgorithm(n, algorithm, (s, e) => positionFeasible(points, s, e, limitSq), (s, e) => positionSplit(points, s, e, limitSq));
+    const keep = keepByAlgorithm(n, algorithm, (s, e) => positionFeasible(xs, ys, s, e, limitSq), (s, e) => positionSplit(xs, ys, s, e, limitSq));
     const result = [];
     let prevIdx = 0;
     for (let i = 0; i < keep.length; i++) {
         if (!keep[i])
             continue;
-        result.push({ x: points[i].x, y: points[i].y, span: i - prevIdx });
+        result.push({ x: xs[i], y: ys[i], span: i - prevIdx });
         prevIdx = i;
     }
     return result;
+}
+/**
+ * 把原始采样包装成无 span 的关键帧轨迹：未压缩路径供消费端统一按
+ * 关键帧接口处理（仅调试用途，不参与性能关键的记录与压缩）。
+ */
+function toKeyframeTrajectory(raw) {
+    return {
+        x: raw.x.map((value) => ({ value })),
+        y: raw.y.map((value) => ({ value })),
+        rotation: raw.rotation?.map((value) => ({ value }))
+    };
 }
 /**
  * 通道化轨迹压缩入口：x、y 与自转各自独立分段，互不拖累。
  * tolerance 为单轴容差：两轴各自与真实坐标的插值偏差都不超过它
  * （合成位移上界为其 √2 倍）。
  *
- * @param trajectory 原始轨迹（无 span），重复压缩不支持
+ * @param trajectory 原始采样轨迹
  * @param tolerance 单轴位置容差，物理坐标单位
  * @param maxRotationError 自转角插值误差上限（弧度）；0 为不压缩旋转通道，
  *   全量保留并按帧序均分时间
@@ -46957,12 +46968,11 @@ function compressTrajectory(trajectory, tolerance, maxRotationError, algorithm =
         rotation: rotation && rotation.length > 0
             ? maxRotationError > 0
                 ? simplifyChannel(rotation, maxRotationError, algorithm)
-                : rotation.map((r) => ({ value: r.value }))
+                : rotation.map((value) => ({ value }))
             : undefined
     };
     if (withJoint) {
-        // 联合压缩的输入是原始采样：x、y 通道按同一时刻对齐，逐下标配对即可
-        result.joint = simplifyPositions(trajectory.x.map((f, i) => ({ x: f.value, y: trajectory.y[i].value })), tolerance, algorithm);
+        result.joint = simplifyPositions(trajectory.x, trajectory.y, tolerance, algorithm);
     }
     return result;
 }
@@ -47131,7 +47141,7 @@ class Contribution {
     x;
     y;
     color;
-    /** 采样轨迹：x/y 通道每帧记录，自转角通道仅方形记录 */
+    /** 原始采样轨迹：x/y 通道每帧记录，自转角通道仅方形记录 */
     trajectory;
     /** 自转角 */
     trackRotation;
@@ -47156,13 +47166,13 @@ class Contribution {
     recordSample(pos) {
         this.x = pos.x;
         this.y = pos.y;
-        this.trajectory.x.push({ value: pos.x });
-        this.trajectory.y.push({ value: pos.y });
+        this.trajectory.x.push(pos.x);
+        this.trajectory.y.push(pos.y);
         if (!this.trackRotation)
             return;
         const rotations = this.trajectory.rotation;
-        const prev = rotations[rotations.length - 1]?.value ?? 0;
-        rotations.push({ value: unwrapRotation(this.collider.rotation(), prev) });
+        const prev = rotations[rotations.length - 1] ?? 0;
+        rotations.push(unwrapRotation(this.collider.rotation(), prev));
     }
     getTrajectory() {
         return this.trajectory;
@@ -47371,12 +47381,13 @@ async function startSimulation(options) {
         contributions: contributions.map((contribution) => {
             const json = contribution.toJSON();
             // 位置与自转按各自容差独立分段，旋转剧变不会迫使位置加密
-            return !disableCompression
-                ? {
-                    ...json,
-                    trajectory: compressTrajectory(json.trajectory, tolerance, shape === 'square' ? MAX_ROTATION_ERROR : 0, compressionAlgorithm, jointPosition)
-                }
-                : json;
+            return {
+                date: json.date,
+                color: json.color,
+                trajectory: disableCompression
+                    ? toKeyframeTrajectory(json.trajectory)
+                    : compressTrajectory(json.trajectory, tolerance, shape === 'square' ? MAX_ROTATION_ERROR : 0, compressionAlgorithm, jointPosition)
+            };
         }),
         textPaths: textPaths.map(({ pathData, rect }) => ({
             pathData: pathData,
