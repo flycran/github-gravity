@@ -255,14 +255,14 @@ function renderCssBlocks(
       },
       ...(rotation
         ? [
-            {
-              frames: rotation,
-              suffix: 'r',
-              animVar: 'nr',
-              cssVar: '--r',
-              fmt: (v: number) => `${ctx.toSvgDeg(v)}deg`
-            }
-          ]
+          {
+            frames: rotation,
+            suffix: 'r',
+            animVar: 'nr',
+            cssVar: '--r',
+            fmt: (v: number) => `${ctx.toSvgDeg(v)}deg`
+          }
+        ]
         : [])
     ]
 
