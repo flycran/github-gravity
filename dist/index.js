@@ -28771,6 +28771,13 @@ function setFailed(message) {
     error$1(message);
 }
 /**
+ * Writes debug message to user log
+ * @param message debug message
+ */
+function debug(message) {
+    issueCommand('debug', {}, message);
+}
+/**
  * Adds an error issue
  * @param message error issue message. Errors will be converted to string via toString()
  * @param properties optional properties to add to the annotation.
@@ -53352,8 +53359,9 @@ async function run() {
         setOutput('svg-path', outputPath);
     }
     catch (error) {
+        setFailed(error instanceof Error ? error.message : String(error));
         if (error instanceof Error)
-            setFailed(error.message);
+            debug(error.stack ?? '');
     }
 }
 
