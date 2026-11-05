@@ -1,7 +1,6 @@
 # GitHub Gravity
 
 ![CI](https://github.com/flycran/github-gravity/actions/workflows/ci.yml/badge.svg)
-![Coverage](./badges/coverage.svg)
 
 让你的 GitHub 贡献图在重力作用下掉落，与自定义文字碰撞，生成精美的 SVG 动画。
 

@@ -1,7 +1,6 @@
 # GitHub Gravity
 
 ![CI](https://github.com/flycran/github-gravity/actions/workflows/ci.yml/badge.svg)
-![Coverage](./badges/coverage.svg)
 
 Make your GitHub contribution graph fall under gravity, colliding with custom text to produce a beautiful animated SVG.
 
