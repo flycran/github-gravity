@@ -52861,7 +52861,7 @@ function pruneFallenBlocks(world, contributions, size) {
         }
     }
 }
-async function createWord(width, height) {
+async function createWorld(width, height) {
     await Jg();
     // 重力
     const world = new Eg({ x: 0.0, y: -9.81 });
@@ -52906,7 +52906,7 @@ function getTextBoundBox(textPaths, { width, height, textTop }) {
  */
 async function createSimulationWorld(options) {
     const { username, text = username, textTop, shape, font, size, interval, fontSize, width, height, friction, restitution, calendarList } = withDefaults(DEFAULT_OPTIONS, options);
-    const world = await createWord(width, height);
+    const world = await createWorld(width, height);
     const contributions = [];
     // 创建用户名文字静止碰撞体（居中对齐）
     const textPaths = await getTextPaths(text, fontSize, font);
@@ -52946,9 +52946,6 @@ async function createSimulationWorld(options) {
         const col = githubContributions.contributions[rowIndex];
         for (let j = 0; j < col.length; j++) {
             const contributionDay = col[j];
-            if (!contributionDay.date) {
-                console.log(contributionDay);
-            }
             const dayOfWeek = new Date(contributionDay.date).getDay();
             if (contributionDay.count) {
                 const x = left + (interval + size) * rowIndex;
@@ -52980,7 +52977,7 @@ async function createSimulationWorld(options) {
 async function startSimulation(options) {
     const { shape, size, compressionAlgorithm, compressionTolerance, disableCompression, jointPosition, maxSimulationTime, speed } = withDefaults(DEFAULT_OPTIONS, options);
     const { world, contributions, textPaths, offsetX, centerY } = await createSimulationWorld(options);
-    // 容差从 SVG 像素换算回物理坐标单位，让压缩函数与渲染缩放解耦；
+    // 容差从 SVG 坐标单位换算回物理坐标单位，让压缩函数与渲染缩放解耦
     const tolerance = compressionTolerance / SCALE;
     /** 判断所有贡献块的刚体是否都已静止（线速度与角速度均低于阈值） */
     function areAllCollidersSleeping() {
