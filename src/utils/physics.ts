@@ -137,7 +137,7 @@ export function pruneFallenBlocks(
   }
 }
 
-async function createWord(width: number, height: number) {
+async function createWorld(width: number, height: number) {
   await init()
   // 重力
   const world = new World({ x: 0.0, y: -9.81 })
@@ -337,7 +337,7 @@ export async function createSimulationWorld(
     restitution,
     calendarList
   } = withDefaults(DEFAULT_OPTIONS, options)
-  const world = await createWord(width, height)
+  const world = await createWorld(width, height)
   const contributions: Contribution[] = []
 
   // 创建用户名文字静止碰撞体（居中对齐）
@@ -384,10 +384,6 @@ export async function createSimulationWorld(
     const col = githubContributions.contributions[rowIndex]
     for (let j = 0; j < col.length; j++) {
       const contributionDay = col[j]
-
-      if (!contributionDay.date) {
-        console.log(contributionDay)
-      }
 
       const dayOfWeek = new Date(contributionDay.date).getDay()
 
@@ -446,7 +442,7 @@ export async function startSimulation(
   const { world, contributions, textPaths, offsetX, centerY } =
     await createSimulationWorld(options)
 
-  // 容差从 SVG 像素换算回物理坐标单位，让压缩函数与渲染缩放解耦；
+  // 容差从 SVG 坐标单位换算回物理坐标单位，让压缩函数与渲染缩放解耦
   const tolerance = compressionTolerance / SCALE
 
   /** 判断所有贡献块的刚体是否都已静止（线速度与角速度均低于阈值） */
