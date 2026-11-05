@@ -25,7 +25,7 @@ export const DEFAULT_FONT = new URL(BUNDLED_FONT_HREF, import.meta.url)
 export const DEFAULT_OPTIONS: Required<
   Omit<
     GensvgOptions,
-    'username' | 'text' | 'maxSimulationTime' | 'calendarList'
+    'username' | 'text' | 'maxSimulationTime' | 'jointPosition' | 'calendarList'
   >
 > = {
   width: 300,

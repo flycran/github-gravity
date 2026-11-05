@@ -4,8 +4,16 @@ import {
   type PropsWithChildren
 } from '@kitajs/html'
 import { DEFAULT_OPTIONS, SCALE, TIMESTEP } from '../const'
-import { ContributionJson, SimulationOptions, startSimulation } from './physics'
-import { buildKeyTimes, buildKeyTimesArray } from './simplifyTrajectory'
+import {
+  RenderedContribution,
+  SimulationOptions,
+  startSimulation
+} from './physics'
+import {
+  buildKeyTimes,
+  buildKeyTimesArray,
+  mergePositionChannels
+} from './simplifyTrajectory'
 import { withDefaults } from './withDefaults'
 
 export interface GensvgOptions extends SimulationOptions {
@@ -19,7 +27,10 @@ export interface GensvgOptions extends SimulationOptions {
   textColor?: string
   /** 启用 CSS @keyframes 动画引擎（动画声明收敛进自包含 style），默认 false 使用 SMIL animateTransform */
   css?: boolean
-  /** 自定义 CSS animation 值，仅 css 引擎有效，默认 var(--n) var(--dur) linear both */
+  /**
+   * 自定义 CSS animation 值，仅 css 引擎有效，默认 var(--n) var(--dur) linear both。
+   * 生成时按通道复制，其中 var(--n) 分别替换为 x/y/自转通道的动画名变量
+   */
   animation?: string
 }
 
@@ -63,7 +74,9 @@ async function SelfClosed({ children }: PropsWithChildren): Promise<string> {
  */
 export async function gensvg(options: GensvgOptions): Promise<string> {
   const op = withDefaults(DEFAULT_OPTIONS, options)
-  const result = await startSimulation(op)
+  // SMIL 的 translate 只能消费绑定的 "x,y" 对，让模拟一并产出联合位置表达；
+  // CSS 引擎按通道独立播放，无需联合表达
+  const result = await startSimulation({ ...op, jointPosition: !op.css })
   const svgWidth = op.width * SCALE
   const svgHeight = op.height * SCALE
 
@@ -114,9 +127,12 @@ export async function gensvg(options: GensvgOptions): Promise<string> {
 /**
  * SMIL 引擎：每个方块自带 animateTransform，轨迹写进 values，
  * 不依赖 CSS，兼容最广的 SVG 渲染环境。
+ *
+ * translate 消费联合位置表达（帧数最少），rotate 走自转通道自己的
+ * keyTimes，旋转剧变不会迫使平移加密。
  */
 function renderSmilBlocks(
-  contributions: ContributionJson[],
+  contributions: RenderedContribution[],
   ctx: EngineContext
 ): EngineOutput {
   const blocks = contributions.map((contribution) => {
@@ -132,19 +148,24 @@ function renderSmilBlocks(
       />
     )
 
-    const values = contribution.trajectory
-      .map(({ x, y }) => `${ctx.toSvgX(x)},${ctx.toSvgY(y)}`)
+    const { x, y, rotation, joint } = contribution.trajectory
+
+    // translate 帧优先用联合位置压缩（欧氏容差，帧数最少）；未启用时退回
+    // x/y 通道时间轴的并集重采样，视觉等价
+    const merged = joint
+      ? { points: joint, keyTimes: buildKeyTimesArray(joint) }
+      : mergePositionChannels(x, y)
+    const values = merged.points
+      .map((p) => `${ctx.toSvgX(p.x)},${ctx.toSvgY(p.y)}`)
       .join(';')
 
-    // 开启压缩后各段时间跨度不同，需要 keyTimes 还原真实节奏；未压缩时为 null，走 SMIL 默认均分
-    const keyTimes = buildKeyTimes(contribution.trajectory)
+    // 开启压缩后各段时间跨度不同，需要 keyTimes 还原真实节奏；未压缩时为
+    // null，走 SMIL 默认均分
+    const keyTimes = merged.keyTimes ? merged.keyTimes.join(';') : undefined
 
-    // 方形轨迹携带自转角：叠加在平移之后，绕方块中心旋转
-    const rotations = ctx.isCircle
-      ? ''
-      : contribution.trajectory
-          .map(({ rotation }) => ctx.toSvgDeg(rotation ?? 0))
-          .join(';')
+    // 方形轨迹携带自转角：叠加在平移之后，绕方块中心旋转，按自身跨度换算节奏
+    const rotations = rotation?.map((r) => ctx.toSvgDeg(r.value)).join(';')
+    const rotateKeyTimes = rotation ? buildKeyTimes(rotation) : null
 
     return (
       <g data-date={contribution.date}>
@@ -165,7 +186,7 @@ function renderSmilBlocks(
             type="rotate"
             additive="sum"
             values={rotations}
-            keyTimes={keyTimes}
+            keyTimes={rotateKeyTimes ?? undefined}
             dur={ctx.dur}
             fill="freeze"
           />
@@ -182,7 +203,7 @@ function renderSmilBlocks(
  * transform 合成、几何与 fill 全部收敛进自包含 style 的公共规则，逐方块输出最小化。
  */
 function renderCssBlocks(
-  contributions: ContributionJson[],
+  contributions: RenderedContribution[],
   ctx: EngineContext,
   animation: string
 ): EngineOutput {
@@ -212,32 +233,67 @@ function renderCssBlocks(
 
   const blocks = contributions.map((contribution, index) => {
     const cls = `${fillClass(contribution.color)} g${index}`
+    const { x, y, rotation } = contribution.trajectory
 
-    // 帧偏移：压缩后按真实节奏换算（5 位小数避免相邻帧舍入碰撞），
-    // 未压缩时为均匀分布
-    const times = buildKeyTimesArray(contribution.trajectory)
-    const frameCount = contribution.trajectory.length
-    const fractions =
-      times ??
-      Array.from(
-        { length: frameCount },
-        (_, i) => i / Math.max(frameCount - 1, 1)
+    // 每个通道独立成动画：活跃通道生成自己的 keyframes，恒定通道折叠为
+    // 静态变量并把动画名置为 none——置 none 而非不绑定，是因为未定义的
+    // var() 会让浏览器判定整条 animation 声明无效，冻结其余通道的动画
+    const channels = [
+      {
+        frames: x,
+        suffix: 'x',
+        animVar: 'nx',
+        cssVar: '--x',
+        fmt: (v: number) => `${ctx.toSvgX(v)}px`
+      },
+      {
+        frames: y,
+        suffix: 'y',
+        animVar: 'ny',
+        cssVar: '--y',
+        fmt: (v: number) => `${ctx.toSvgY(v)}px`
+      },
+      ...(rotation
+        ? [
+            {
+              frames: rotation,
+              suffix: 'r',
+              animVar: 'nr',
+              cssVar: '--r',
+              fmt: (v: number) => `${ctx.toSvgDeg(v)}deg`
+            }
+          ]
+        : [])
+    ]
+
+    const binding: string[] = []
+    for (const ch of channels) {
+      const name = `g${index}${ch.suffix}`
+      if (ch.frames.every((f) => f.value === ch.frames[0].value)) {
+        binding.push(
+          `--${ch.animVar}:none`,
+          `${ch.cssVar}:${ch.fmt(ch.frames[0].value)}`
+        )
+        continue
+      }
+      // 帧偏移：压缩后按真实节奏换算（5 位小数避免相邻帧舍入碰撞），
+      // 未压缩时为均匀分布
+      const times = buildKeyTimesArray(ch.frames)
+      const fractions =
+        times ??
+        Array.from(
+          { length: ch.frames.length },
+          (_, i) => i / Math.max(ch.frames.length - 1, 1)
+        )
+      const offsets = fractions.map((t) => `${+(t * 100).toFixed(5)}%`)
+      keyframesRules.push(
+        `@keyframes ${name}{${ch.frames
+          .map((f, i) => `${offsets[i]}{${ch.cssVar}:${ch.fmt(f.value)}}`)
+          .join('')}}`
       )
-    const offsets = fractions.map((t) => `${+(t * 100).toFixed(5)}%`)
-
-    // 每帧只写坐标变量，transform 的合成模板在公共规则；
-    // rotate 叠加在 translate 之后，绕方块中心旋转
-    keyframesRules.push(
-      `@keyframes g${index}{${contribution.trajectory
-        .map((p, i) => {
-          const rotation = ctx.isCircle
-            ? ''
-            : `;--r:${ctx.toSvgDeg(p.rotation ?? 0)}deg`
-          return `${offsets[i]}{--x:${ctx.toSvgX(p.x)}px;--y:${ctx.toSvgY(p.y)}px${rotation}}`
-        })
-        .join('')}}`
-    )
-    bindingRules.push(`.g${index}{--n:g${index}}`)
+      binding.push(`--${ch.animVar}:${name}`)
+    }
+    bindingRules.push(`.g${index}{${binding.join(';')}}`)
 
     return ctx.isCircle ? <circle class={cls} /> : <rect class={cls} />
   })
@@ -257,9 +313,19 @@ function renderCssBlocks(
     ? `#b>circle{r:${ctx.halfSizePx}px}`
     : `#b>rect{x:${-ctx.halfSizePx}px;y:${-ctx.halfSizePx}px;width:${ctx.sizePx}px;height:${ctx.sizePx}px}`
 
+  // 公共动画逐通道声明：用户模板里的 var(--n) 按通道替换为对应动画名变量。
+  // 绑定规则保证变量总有值（恒定通道为 none，动画项安全关闭）
+  const channelAnim = (v: string) =>
+    animation.replaceAll('var(--n)', `var(--${v})`)
+  const cssAnimation = [
+    channelAnim('nx'),
+    channelAnim('ny'),
+    ...(ctx.isCircle ? [] : [channelAnim('nr')])
+  ].join(',')
+
   // CDATA（style 处于 XML 解析上下文，<length> 会被当标签解析）；
   // animation 默认值 = 变量注入的动画名与时长 + linear + 末帧冻结与首帧前的位置兜底
-  const cssRules = `<![CDATA[${cssPropertyRules}:root{--dur:${ctx.dur}}#b>*{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${animation}}${cssGeometryRule}${fillRules.join('')}${keyframesRules.join('')}${bindingRules.join('')}]]>`
+  const cssRules = `<![CDATA[${cssPropertyRules}:root{--dur:${ctx.dur}}#b>*{transform:translate(var(--x),var(--y))${cssRotateTemplate};transform-origin:0 0;animation:${cssAnimation}}${cssGeometryRule}${fillRules.join('')}${keyframesRules.join('')}${bindingRules.join('')}]]>`
 
   const style = <style>{cssRules}</style>
 

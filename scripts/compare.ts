@@ -7,26 +7,14 @@
  * 手动运行：bun run compare
  */
 
-import { maxLerpDeviation, sumSpans } from '../__tests__/simplifyHelpers'
+import { maxChannelDeviation, sumSpans } from '../__tests__/simplifyHelpers'
 import { startSimulation } from '../src/utils/physics'
 import {
-  CompressedTrajectoryPoint,
-  simplifyTrajectoryDP,
-  simplifyTrajectoryGreedy,
-  simplifyTrajectoryRDP
+  CompressionAlgorithm,
+  compressTrajectory
 } from '../src/utils/simplifyTrajectory'
 
-type Point = { x: number; y: number }
-type SimplifyFn = (
-  trajectory: Point[],
-  tolerance: number
-) => CompressedTrajectoryPoint[]
-
-const algorithms: [string, SimplifyFn][] = [
-  ['DP', simplifyTrajectoryDP],
-  ['RDP', simplifyTrajectoryRDP],
-  ['Greedy', simplifyTrajectoryGreedy]
-]
+const algorithms: CompressionAlgorithm[] = ['DP', 'RDP', 'Greedy']
 
 // 与 physics.ts 相同的换算：容差以 SVG 像素输入，除以 SCALE 转为物理坐标单位
 const SCALE = 3
@@ -39,10 +27,10 @@ const simulation = await startSimulation({
 })
 
 const tracks = simulation.contributions.map((c) => c.trajectory)
-const totalPoints = tracks.reduce((sum, t) => sum + t.length, 0)
+const totalPoints = tracks.reduce((sum, t) => sum + t.x.length + t.y.length, 0)
 console.log(
-  `${tracks.length} trajectories, ${totalPoints} points total, ` +
-    `avg ${Math.round(totalPoints / tracks.length)} points/track, ` +
+  `${tracks.length} trajectories, ${totalPoints} channel values total, ` +
+    `avg ${Math.round(totalPoints / tracks.length / 2)} samples/track, ` +
     `${Math.round(simulation.stepCount)} steps`
 )
 
@@ -57,30 +45,39 @@ interface Row {
 
 const rows: Row[] = []
 
-for (const [name, simplify] of algorithms) {
+for (const algorithm of algorithms) {
   for (const tolerance of tolerances) {
     let kept = 0
     let maxDeviation = 0
     const start = performance.now()
 
     for (const track of tracks) {
-      const result = simplify(track, tolerance)
-      kept += result.length
-      if (sumSpans(result) !== track.length - 1) {
-        throw new Error(`${name}: span sum mismatch`)
+      // 对比只关心坐标通道指标：旋转上限传 0，旋转通道无损全量保留
+      const result = compressTrajectory(track, tolerance, 0, algorithm)
+      kept += result.x.length + result.y.length
+      if (
+        sumSpans(result.x) !== track.x.length - 1 ||
+        sumSpans(result.y) !== track.y.length - 1
+      ) {
+        throw new Error(`${algorithm}: span sum mismatch`)
       }
-      const deviation = maxLerpDeviation(track, result)
+      // 单轴校验：每轴的插值偏差都不超过 tolerance（压缩承诺的误差上界）
+      const deviation = Math.max(
+        maxChannelDeviation(track.x, result.x),
+        maxChannelDeviation(track.y, result.y)
+      )
       if (deviation > tolerance + 1e-9) {
         throw new Error(
-          `${name}: deviation ${deviation} exceeds tolerance ${tolerance}`
+          `${algorithm}: deviation ${deviation} exceeds tolerance ${tolerance}`
         )
       }
       maxDeviation = Math.max(maxDeviation, deviation)
     }
 
     rows.push({
-      algorithm: name,
+      algorithm,
       'tolerance(px)': (tolerance * SCALE).toFixed(2),
+      // 每方块 x/y 两通道的关键帧总数
       'avg keyframes': +(kept / tracks.length).toFixed(1),
       compression: `${(totalPoints / kept).toFixed(1)}x`,
       'max deviation': +maxDeviation.toFixed(4),

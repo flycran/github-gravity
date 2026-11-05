@@ -23,26 +23,13 @@ import {
 } from './githubContributions'
 import { FontSource, getTextPaths } from './parseTextPath'
 import {
-  CompressedTrajectoryPoint,
-  simplifyTrajectoryDP,
-  simplifyTrajectoryGreedy,
-  simplifyTrajectoryRDP
+  CompressionAlgorithm,
+  compressTrajectory,
+  RawTrajectory,
+  Trajectory,
+  toKeyframeTrajectory
 } from './simplifyTrajectory'
 import { withDefaults } from './withDefaults'
-
-/** 压缩算法名 */
-const COMPRESSION_ALGORITHMS: Record<
-  NonNullable<SimulationOptions['compressionAlgorithm']>,
-  (
-    trajectory: Point[],
-    tolerance: number,
-    maxRotationError?: number
-  ) => CompressedTrajectoryPoint[]
-> = {
-  DP: simplifyTrajectoryDP,
-  RDP: simplifyTrajectoryRDP,
-  Greedy: simplifyTrajectoryGreedy
-}
 
 /** 把自转角解缠绕到与上一帧连续（差收敛到 ±π 内），保证轨迹角度可直接线性插值 */
 function unwrapRotation(next: number, prev: number): number {
@@ -55,10 +42,11 @@ function unwrapRotation(next: number, prev: number): number {
 /** 方形自转轨迹的角度插值误差上限 */
 const MAX_ROTATION_ERROR = (3 * Math.PI) / 180
 
+/** 模拟产出的贡献方块：轨迹为原始采样序列 */
 export interface ContributionJson {
   date: string
   color: string
-  trajectory: Point[]
+  trajectory: RawTrajectory
 }
 
 export class Contribution implements ContributionJson {
@@ -67,7 +55,8 @@ export class Contribution implements ContributionJson {
   y: number
   color: string
 
-  trajectory: Point[]
+  /** 原始采样轨迹：x/y 通道每帧记录，自转角通道仅方形记录 */
+  trajectory: RawTrajectory
 
   /** 自转角 */
   trackRotation: boolean
@@ -86,35 +75,40 @@ export class Contribution implements ContributionJson {
     const pos = collider.translation()
     this.x = pos.x
     this.y = pos.y
-    this.trajectory = []
-    this.trajectory.push(this.recordPoint(pos))
+    this.trajectory = trackRotation
+      ? { x: [], y: [], rotation: [] }
+      : { x: [], y: [] }
+    this.recordSample(pos)
   }
 
   update() {
-    const pos = this.collider.translation()
-    this.x = pos.x
-    this.y = pos.y
-    this.trajectory.push(this.recordPoint(pos))
+    this.recordSample(this.collider.translation())
   }
 
-  /** 记录当前时刻的位置 */
-  private recordPoint(pos: { x: number; y: number }): Point {
-    if (!this.trackRotation) return { x: pos.x, y: pos.y }
-    const last = this.trajectory[this.trajectory.length - 1]
-    return {
-      x: pos.x,
-      y: pos.y,
-      rotation: unwrapRotation(this.collider.rotation(), last?.rotation ?? 0)
-    }
+  /** 记录当前时刻的位姿采样：坐标入各自通道，解缠绕后的自转角入旋转通道 */
+  private recordSample(pos: { x: number; y: number }): void {
+    this.x = pos.x
+    this.y = pos.y
+    this.trajectory.x.push(pos.x)
+    this.trajectory.y.push(pos.y)
+    if (!this.trackRotation) return
+    const rotations = this.trajectory.rotation!
+    const prev = rotations[rotations.length - 1] ?? 0
+    rotations.push(unwrapRotation(this.collider.rotation(), prev))
   }
 
   getTrajectory() {
     return this.trajectory
   }
 
-  /** 移除轨迹末尾 count 个点 */
+  /** 移除各通道轨迹末尾 count 个采样 */
   truncateTail(count: number) {
-    this.trajectory.length = Math.max(1, this.trajectory.length - count)
+    const kept = Math.max(1, this.trajectory.x.length - count)
+    this.trajectory.x.length = kept
+    this.trajectory.y.length = kept
+    if (this.trajectory.rotation) {
+      this.trajectory.rotation.length = kept
+    }
   }
 
   toJSON(): ContributionJson {
@@ -183,19 +177,6 @@ export interface TextPathResult {
   }
 }
 
-export interface Point {
-  x: number
-  y: number
-  /**
-   * 方块自转角
-   */
-  rotation?: number
-  /**
-   * 启用压缩时，该点与前一个保留点的原始索引差
-   */
-  span?: number
-}
-
 /**
  * 计算所有字形的整体包围盒
  * @param textPaths
@@ -234,11 +215,18 @@ export function getTextBoundBox(
   }
 }
 
+/** 渲染用贡献方块：轨迹已统一为关键帧形态（未压缩时为无 span 的全量关键帧） */
+export interface RenderedContribution {
+  date: string
+  color: string
+  trajectory: Trajectory
+}
+
 export interface SimulationResult {
   stepCount: number
   time: number
   textPaths: Pick<TextPathResult, 'rect' | 'pathData'>[]
-  contributions: ContributionJson[]
+  contributions: RenderedContribution[]
   /** 文字在物理世界中的 X 偏移量 */
   offsetX: number
   /** 文字在物理世界中的 Y 偏移量 */
@@ -253,16 +241,22 @@ export interface SimulationOptions {
   /** 字体大小 */
   fontSize?: number
   /**
-   * 轨迹压缩容差，单位 SVG 像素。播放时每个原始时刻的插值位置与真实位置的偏差不超过该值
+   * 轨迹压缩容差，单位 SVG 像素。播放时每个原始时刻的插值坐标与真实坐标
+   * 在横向、纵向上各自的偏差不超过该值
    */
   compressionTolerance?: number
   /** 禁用轨迹压缩，保留完整轨迹。调试用途，action无法禁用压缩 */
   disableCompression?: boolean
   /**
+   * 同时产出联合位置表达（x/y 共享时间轴），供 SMIL 这类无法单轴插值的
+   * 引擎使用。拆分通道折点错开时联合帧数更少，体积更省
+   */
+  jointPosition?: boolean
+  /**
    * 轨迹压缩算法：Greedy（单遍贪心，快，默认）、DP（动态规划全局最优，长轨迹秒级）、
    * RDP（时空版 Ramer-Douglas-Peucker，最快，关键帧略多）
    */
-  compressionAlgorithm?: 'Greedy' | 'DP' | 'RDP'
+  compressionAlgorithm?: CompressionAlgorithm
   /**
    * 贡献方块的形状：
    * - circle 圆形
@@ -445,6 +439,7 @@ export async function startSimulation(
     compressionAlgorithm,
     compressionTolerance,
     disableCompression,
+    jointPosition,
     maxSimulationTime,
     speed
   } = withDefaults(DEFAULT_OPTIONS, options)
@@ -517,18 +512,22 @@ export async function startSimulation(
   return {
     stepCount,
     time: endTime - startTime,
-    contributions: contributions.map((contribution) => {
+    contributions: contributions.map((contribution): RenderedContribution => {
       const json = contribution.toJSON()
-      return !disableCompression
-        ? {
-            ...json,
-            trajectory: COMPRESSION_ALGORITHMS[compressionAlgorithm](
+      // 位置与自转按各自容差独立分段，旋转剧变不会迫使位置加密
+      return {
+        date: json.date,
+        color: json.color,
+        trajectory: disableCompression
+          ? toKeyframeTrajectory(json.trajectory)
+          : compressTrajectory(
               json.trajectory,
               tolerance,
-              shape === 'square' ? MAX_ROTATION_ERROR : 0
+              shape === 'square' ? MAX_ROTATION_ERROR : 0,
+              compressionAlgorithm,
+              jointPosition
             )
-          }
-        : json
+      }
     }),
     textPaths: textPaths.map(({ pathData, rect }) => ({
       pathData: pathData,

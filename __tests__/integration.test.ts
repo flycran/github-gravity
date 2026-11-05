@@ -336,7 +336,11 @@ describe('css animation engine', () => {
     expect(circleSvg).not.toContain('fill="#')
     expect(circleSvg).not.toContain('data-g')
     expect(circleSvg).toContain('#b>circle{r:2px}')
-    expect(circleSvg).toContain('.g0{--n:g0}')
+    // 圆形只有 x/y 两个通道；单列数据下 x 全程恒定，折叠为静态值并关闭该动画
+    expect(circleSvg).toContain('.g0{--nx:none;--x:')
+    expect(circleSvg).toContain(';--ny:g0y}')
+    expect(circleSvg).not.toContain('--nr')
+    expect(circleSvg).not.toContain('@keyframes g0x')
     // 每种颜色一条规则：规则数与唯一 class 数一致
     const fillClasses = [
       ...new Set(
@@ -360,6 +364,25 @@ describe('css animation engine', () => {
 
     expect(rectSvg).toContain('<rect class="f0 g0"/>')
     expect(rectSvg).toContain('#b>rect{x:-2px;y:-2px;width:4px;height:4px}')
+    // 方形额外挂自转通道，走独立 keyframes 与独立时间轴
+    expect(rectSvg).toContain('--nr:g0r')
+    expect(rectSvg).toContain('@keyframes g0r{')
+  })
+
+  it('switches custom animation per channel', async () => {
+    const svg = await gensvg({
+      username: 'testuser',
+      text: 'Hi',
+      fontSize: 40,
+      css: true,
+      animation: 'var(--n) 1s linear both',
+      calendarList: makeCalendarList()
+    })
+
+    // var(--n) 按通道替换，圆形两段（x、y）
+    expect(svg).toContain(
+      'animation:var(--nx) 1s linear both,var(--ny) 1s linear both}'
+    )
   })
 
   it('applies a custom animation value', async () => {
