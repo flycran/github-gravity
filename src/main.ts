@@ -157,6 +157,7 @@ export async function run(): Promise<void> {
 
     core.setOutput('svg-path', outputPath)
   } catch (error) {
-    if (error instanceof Error) core.setFailed(error.message)
+    core.setFailed(error instanceof Error ? error.message : String(error))
+    if (error instanceof Error) core.debug(error.stack ?? '')
   }
 }

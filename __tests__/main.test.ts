@@ -251,6 +251,16 @@ describe('action input plumbing', () => {
     expect(captured).toMatchObject({ scale: 2.5 })
   })
 
+  it('fails when the generator throws a non-Error value', async () => {
+    spyOn(gensvgModule, 'gensvg').mockImplementation(async () => {
+      throw 'boom'
+    })
+
+    await run()
+
+    expect(process.exitCode).toBe(1)
+  })
+
   it('writes the generated svg to output-path', async () => {
     await run()
 
