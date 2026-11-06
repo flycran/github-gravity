@@ -52873,9 +52873,6 @@ async function createWorld(width, height) {
 }
 /**
  * 计算所有字形的整体包围盒
- * @param textPaths
- * @param param1
- * @returns
  */
 function getTextBoundBox(textPaths, { width, height, textTop }) {
     let minX = Infinity, maxX = -Infinity, maxY = -Infinity;
