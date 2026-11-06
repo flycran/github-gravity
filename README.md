@@ -1,8 +1,6 @@
 # svg-compare
 
-SVG 分支视觉对比工具：对**任意两个 ref**（分支 / tag / commit）用**同一份输入**各自生成 github-gravity 的动画 SVG，预览页同步播放对比，并输出像素级一致性报告。用于确认算法调整（轨迹压缩、物理参数等）不会破坏视觉效果，以及作为 PR 合入 main 前的视觉回归门禁。
-
-本分支是**孤儿分支（orphan）**，与 gensvg 项目代码完全解耦：工具自身不 import 项目代码，对比时把生成驱动注入 `git archive` 导出的临时目录，运行该 ref 自己的实现。主仓库零改动，本分支不合并回 main。
+SVG 分支视觉对比工具：对**任意两个 ref**（分支 / tag / commit）用**同一份输入**各自生成 github-gravity 的动画 SVG，预览页同步播放对比，并输出像素级一致性报告。
 
 ## 调用方式
 
@@ -133,14 +131,16 @@ bun cli.ts main main --input-a fixtures/default-smil.json --input-b fixtures/dp-
 ```
 .svg-compare/<组合>/
 ├── a.svg / b.svg     # 两 ref 各自生成的动画 SVG
-├── meta.json         # ref/commit/引擎/时长/文件大小
+├── meta.json         # ref/commit/时长/文件大小
 ├── report.json       # 一致性报告（--report 时）
 └── frames/           # 逐帧 A/B/diff 截图（--report 时）
 ```
 
 ## 输入约定（直通语义）
 
-输入 JSON 原样透传给被测 ref 的 `gensvg`（`calendarList` 注入贡献数据保证离线确定性）。工具**不做**字段白名单、跨版本兼容映射与默认值合并——不同 ref 的选项字段差异由调用方自行判断，字段不被某 ref 支持时透出该 ref 的原始报错。`--engine` 是唯一例外（轻量覆盖引擎开关，其余字段不动）。
+输入支持 `.json` 与 `.ts`/`.js`（bun 原生导入；TS 输入须 default export 一个对象）两种格式，内容原样透传给被测 ref 的 `gensvg`（`calendarList` 注入贡献数据保证离线确定性）。工具**不做**字段白名单、跨版本兼容映射与默认值合并——不同 ref 的选项字段差异由调用方自行判断，字段不被某 ref 支持时透出该 ref 的原始报错。`--engine` 是唯一例外（轻量覆盖引擎开关，其余字段不动）。
+
+目录模式扫描全部输入文件为多组合；**以 `_` 开头的 TS 文件视为共享模块**，不作为组合——自带的 `fixtures/_calendar.ts` 就是这样被三个 fixture 共用同一份贡献数据，修改只改一处。
 
 ## 生成模式
 

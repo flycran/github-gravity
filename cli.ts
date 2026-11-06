@@ -176,16 +176,20 @@ async function main(
   // 未指定的一侧回退到 --input 的第一个组合
   let plans: ComboPlan[]
   if (options.inputA !== undefined || options.inputB !== undefined) {
-    const shared = loadInputs(options.input)[0]
-    const inputA = options.inputA ? loadInputs(options.inputA)[0] : shared
-    const inputB = options.inputB ? loadInputs(options.inputB)[0] : shared
+    const shared = (await loadInputs(options.input))[0]
+    const inputA = options.inputA
+      ? (await loadInputs(options.inputA))[0]
+      : shared
+    const inputB = options.inputB
+      ? (await loadInputs(options.inputB))[0]
+      : shared
     const name =
       inputA.name === inputB.name
         ? inputA.name
         : `${inputA.name}__${inputB.name}`
     plans = [{ name, inputA, inputB }]
   } else {
-    plans = loadInputs(options.input).map((input) => ({
+    plans = (await loadInputs(options.input)).map((input) => ({
       name: input.name,
       inputA: input,
       inputB: input

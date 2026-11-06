@@ -4,6 +4,10 @@
  * 输入内容原样透传给被测 ref 的 gensvg，不做字段白名单、跨版本兼容映射
  * 与默认值合并——不同 ref 的选项字段差异由调用方自行判断，
  * 字段不被某 ref 支持时透传该 ref 的原始报错。
+ *
+ * 支持 .json 与 .ts/.js（bun 原生导入）两种格式；TS 输入必须 default export
+ * 一个对象。目录模式下以 `_` 开头的 .ts 文件视为共享模块（如多个 fixture
+ * 复用的 calendarList），不作为组合，避免同一份数据在多个文件里重复定义。
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
@@ -16,34 +20,54 @@ export interface CompareInput {
   options: Record<string, unknown>
 }
 
+const INPUT_EXTENSIONS = ['.json', '.ts', '.js', '.mjs']
+
 /**
- * 加载对比输入组合：文件为单组合，目录则扫描其中全部 .json
- * （按文件名排序）为多组合。
+ * 加载对比输入组合：文件为单组合，目录则扫描其中全部输入文件
+ * （按文件名排序，`_` 前缀的 TS 共享模块除外）为多组合。
  */
-export function loadInputs(inputPath: string): CompareInput[] {
+export async function loadInputs(inputPath: string): Promise<CompareInput[]> {
   const absolute = resolve(inputPath)
   if (!statSync(absolute).isDirectory()) {
-    return [{ name: comboName(absolute), options: readInputFile(absolute) }]
+    return [{ name: comboName(absolute), options: await readInput(absolute) }]
   }
   const files = readdirSync(absolute)
-    .filter((file) => extname(file) === '.json')
+    .filter(
+      (file) =>
+        INPUT_EXTENSIONS.includes(extname(file)) &&
+        !(file.startsWith('_') && extname(file) !== '.json')
+    )
     .sort()
   if (files.length === 0) {
-    throw new Error(`输入目录中没有 .json 文件：${absolute}`)
+    throw new Error(
+      `输入目录中没有 ${INPUT_EXTENSIONS.join('/')} 文件：${absolute}`
+    )
   }
-  return files.map((file) => ({
-    name: comboName(file),
-    options: readInputFile(join(absolute, file))
-  }))
+  return Promise.all(
+    files.map(async (file) => ({
+      name: comboName(file),
+      options: await readInput(join(absolute, file))
+    }))
+  )
 }
 
 function comboName(filePath: string): string {
   const base = filePath.split(/[\\/]/).pop() ?? 'combo'
-  return base.replace(/\.json$/i, '')
+  return base.replace(/\.(json|ts|js|mjs)$/i, '')
 }
 
-function readInputFile(filePath: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(filePath, 'utf-8'))
+/** JSON 走文本解析；TS/JS 走 bun 的动态导入（模块可共享引用，如 calendarList） */
+async function readInput(filePath: string): Promise<Record<string, unknown>> {
+  if (extname(filePath) === '.json') {
+    return JSON.parse(readFileSync(filePath, 'utf-8'))
+  }
+  const module = (await import(resolve(filePath))) as {
+    default?: Record<string, unknown>
+  }
+  if (!module.default || typeof module.default !== 'object') {
+    throw new Error(`TS/JS 输入必须 default export 一个对象：${filePath}`)
+  }
+  return module.default
 }
 
 /**
