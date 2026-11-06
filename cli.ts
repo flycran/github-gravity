@@ -44,7 +44,6 @@ import { parseSvgMeta } from './svgMeta'
 
 const TOOL_ROOT = import.meta.dir
 const DEFAULT_OUT_DIR = '.svg-compare'
-const DEFAULT_BASE_REF = 'main'
 
 /** 三个子命令共享的生成 flags（字段名与 commander 生成的属性一一对应） */
 interface SharedOptions {
@@ -478,18 +477,19 @@ program
   .name('svg-compare')
   .description(
     '任意两个 ref 在同一份输入下生成动画 SVG，预览页同步播放对比，' +
-      '并输出像素级一致性报告。分支可省略：A 默认 main，B 默认当前 HEAD'
+      '并输出像素级一致性报告。必填一个 ref；只给一个时两侧都用它'
   )
 
 const preview = program
   .command('preview')
   .description('生成产物并起预览服务（页内可触发生成一致性报告）')
-  .argument('[refA]', '对比侧 A：分支 / tag / commit', DEFAULT_BASE_REF)
-  .argument('[refB]', '对比侧 B：分支 / tag / commit', 'HEAD')
+  .argument('<refA>', '对比侧 A：分支 / tag / commit（必填）')
+  .argument('[refB]', '对比侧 B：分支 / tag / commit（省略时与 A 相同）')
   .option('--no-open', '不自动打开浏览器（预览 serve 仍保留）')
 addSharedFlags(preview, join(TOOL_ROOT, 'configs/preview/default.ts')).action(
-  async (refA: string, refB: string, options: PreviewOptions) => {
-    const prepared = await prepare(refA, refB, options)
+  async (refA: string, refB: string | undefined, options: PreviewOptions) => {
+    // 只给一个 ref 时两侧都用它（如对比同版本内的 SMIL vs CSS）
+    const prepared = await prepare(refA, refB ?? refA, options)
     const combos = await generateAll(prepared, options)
     await previewServe(
       options,
@@ -504,11 +504,12 @@ addSharedFlags(preview, join(TOOL_ROOT, 'configs/preview/default.ts')).action(
 const report = program
   .command('report')
   .description('无头生成一致性报告并输出判定（未通过退出码 1）')
-  .argument('[refA]', '对比侧 A：分支 / tag / commit', DEFAULT_BASE_REF)
-  .argument('[refB]', '对比侧 B：分支 / tag / commit', 'HEAD')
+  .argument('<refA>', '对比侧 A：分支 / tag / commit（必填）')
+  .argument('[refB]', '对比侧 B：分支 / tag / commit（省略时与 A 相同）')
 addSharedFlags(report, join(TOOL_ROOT, 'configs/batch')).action(
-  async (refA: string, refB: string, options: SharedOptions) => {
-    const prepared = await prepare(refA, refB, options)
+  async (refA: string, refB: string | undefined, options: SharedOptions) => {
+    // 只给一个 ref 时两侧都用它（如对比同版本内的 SMIL vs CSS）
+    const prepared = await prepare(refA, refB ?? refA, options)
     const combos = await generateAll(prepared, options)
     const aggregated = await reportAll(prepared, options, combos)
     if (!aggregated.pass) process.exitCode = 1
@@ -520,11 +521,12 @@ const ci = program
   .description(
     'CI 门禁：报告 + summary.json + GitHub Step Summary（未通过退出码 1）'
   )
-  .argument('[refA]', '对比侧 A：分支 / tag / commit', DEFAULT_BASE_REF)
-  .argument('[refB]', '对比侧 B：分支 / tag / commit', 'HEAD')
+  .argument('<refA>', '对比侧 A：分支 / tag / commit（必填）')
+  .argument('[refB]', '对比侧 B：分支 / tag / commit（省略时与 A 相同）')
 addSharedFlags(ci, join(TOOL_ROOT, 'configs/batch')).action(
-  async (refA: string, refB: string, options: SharedOptions) => {
-    const prepared = await prepare(refA, refB, options)
+  async (refA: string, refB: string | undefined, options: SharedOptions) => {
+    // 只给一个 ref 时两侧都用它（如对比同版本内的 SMIL vs CSS）
+    const prepared = await prepare(refA, refB ?? refA, options)
     const combos = await generateAll(prepared, options)
     const aggregated = await reportAll(prepared, options, combos)
     if (!aggregated.pass) process.exitCode = 1

@@ -15,8 +15,8 @@ TOOL=/path/to/svg-compare   # 本分支的工作树/检出目录
 生成产物 → 起本地 serve → 自动打开浏览器。预览页支持同步播放/暂停、进度条拖动定位、±1 帧步进（空格 / ←→）、并排 / 叠加（透明度滑块）/ difference 混合三种视图，页内"生成一致性报告"按钮可触发像素级对比并就地渲染报告。
 
 ```sh
-bun $TOOL/cli.ts preview                       # main vs 当前 HEAD（分支可省略）
-bun $TOOL/cli.ts preview main feature-x        # 显式指定两侧
+bun $TOOL/cli.ts preview main feature-x        # 对比两侧
+bun $TOOL/cli.ts preview v3.3.0                # 只给一个 ref：两侧都用它
 bun $TOOL/cli.ts preview main --no-open        # 只生成并挂起 serve，不自动开浏览器
 ```
 
@@ -103,8 +103,8 @@ bun cli.ts <子命令> [refA] [refB] [flags]
   ci                        CI 门禁：报告 + summary.json + Step Summary
 
 参数：
-  [refA]                    对比侧 A（默认 main）
-  [refB]                    对比侧 B（默认当前 HEAD）
+  <refA>                    对比侧 A（必填）
+  [refB]                    对比侧 B（省略时与 A 相同——用于同版本内对比不同输入）
 
 三个子命令共享的 flags：
   --input <file|dir>        共用对比输入 JSON 或目录（目录下全部输入文件视为多组合）；
@@ -145,14 +145,14 @@ configs/
 
 ### 对比不同输入（引擎 / 算法差异）
 
-`--input-a`/`--input-b` 让两侧各用各的参数，用于对比同一份代码在不同引擎、不同压缩算法下的视觉差异（此时通常两侧传同一个 ref）：
+`--input-a`/`--input-b` 让两侧各用各的参数，用于对比同一份代码在不同引擎、不同压缩算法下的视觉差异——此时只给一个 ref，两侧都用它：
 
 ```sh
 # SMIL vs CSS 两种引擎（同 ref，输入只差 css 开关与相关参数）
-bun cli.ts preview main main --input-a configs/preview/smil.ts --input-b configs/preview/css.ts
+bun cli.ts preview v3.3.0 --input-a configs/preview/smil.ts --input-b configs/preview/css.ts
 
 # Greedy vs DP 两种压缩算法
-bun cli.ts preview main main --input-a configs/preview/smil.ts --input-b configs/batch/dp-compression.ts
+bun cli.ts preview main --input-a configs/preview/smil.ts --input-b configs/batch/dp-compression.ts
 ```
 
 `--input-a`/`--input-b` 未提供的一侧回退到 `--input` 的第一个组合；组合名按两侧输入名拼接（如 `default-smil__css-square-color`）。两侧时长不同时以较长一方为采样范围，短的一方末帧停驻。注意：输入不同的对比**不代表回归差异**，仅用于分析参数间的行为差异——CI 门禁场景仍应共用一份输入。
