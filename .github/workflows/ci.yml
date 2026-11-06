@@ -33,6 +33,10 @@ jobs:
         id: biome-check
         run: bun biome check .
 
+      - name: Type Check
+        id: type-check
+        run: npx tsc --noEmit
+
       - name: Test
         id: npm-ci-test
         run: npm run ci-test
