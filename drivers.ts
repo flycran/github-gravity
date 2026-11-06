@@ -18,8 +18,19 @@ export function renderDriverSrc(): string {
   return `// SVG 视觉对比工具注入的生成驱动（src 模式）：以该 ref 的源码直接生成
 import { readFileSync, writeFileSync } from 'node:fs'
 
-const { gensvg } = await import('./src/utils/gensvg.js')
 const input = JSON.parse(readFileSync(${JSON.stringify(INPUT_FILE)}, 'utf-8'))
+
+// 参数注入的兼容边界：老版本 gensvg 没有 calendarList 参数时会忽略它并
+// 回退到网络取数——外部数据源随时间变化，两 ref 可能拿到不同输入，对比不成立。
+// 这里把任何网络访问变成显式失败，指引改用注入点更稳定的 dist 模式
+globalThis.fetch = () => {
+  throw new Error(
+    '该 ref 的 gensvg 未接受 calendarList 注入而回退到网络取数：' +
+      'src 模式要求 gensvg 支持 calendarList 参数，对比该版本请改用 --via dist'
+  )
+}
+
+const { gensvg } = await import('./src/utils/gensvg.js')
 const svg = await gensvg(input)
 writeFileSync(process.argv[2], svg, 'utf-8')
 `

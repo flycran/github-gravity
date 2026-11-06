@@ -68,9 +68,11 @@ export async function runReport(options: ReportOptions): Promise<ReportData> {
         timeout: 120_000
       }
     )
-    await page.waitForFunction('window.__compare !== undefined', undefined, {
-      timeout: 120_000
-    })
+    await page.waitForFunction(
+      () => Boolean((window as unknown as CompareHost).__compare),
+      undefined,
+      { timeout: 120_000 }
+    )
     // 角标（A/B 徽章）颜色不同会污染像素对比，报告截图前移除
     await page.evaluate(() => {
       for (const label of document.querySelectorAll('.pane-label')) {
@@ -157,20 +159,29 @@ export async function runReport(options: ReportOptions): Promise<ReportData> {
   }
 }
 
+/** 预览页暴露的 seek 通道（见 pages/previewPage.ts 的 window.__compare） */
+interface CompareHost {
+  __compare?: { seek(ms: number): void; now(): number }
+}
+
 async function seekAndVerify(page: Page, timeMs: number): Promise<void> {
   // seek ≠ 渲染完成：双 rAF 等待样式计算与合成，再读回时钟校验定位精度。
-  // evaluate 的回调会被序列化到浏览器执行，必须写纯 JS（不能用 TS 语法）
+  // evaluate 必须用函数形式：bun 下 playwright 的字符串形式会静默失效
+  // （返回 undefined 而不报错），曾导致时钟从未被 seek、报告恒为 0 差异的假结果；
+  // 函数里的 as 断言经 bun 转译剥离后即为合法浏览器 JS
   for (let attempt = 0; attempt < 2; attempt++) {
-    await page.evaluate('(ms) => window.__compare.seek(ms)', timeMs)
+    await page.evaluate((ms) => {
+      ;(window as unknown as CompareHost).__compare?.seek(ms)
+    }, timeMs)
     await page.evaluate(
       () =>
         new Promise<void>((resolve) => {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
         })
     )
-    const now = (await page.evaluate(
-      '() => window.__compare ? window.__compare.now() : Number.NaN'
-    )) as number
+    const now = await page.evaluate(
+      () => (window as unknown as CompareHost).__compare?.now() ?? Number.NaN
+    )
     if (Math.abs(now - timeMs) <= SEEK_TOLERANCE_MS) return
   }
   console.warn(`[report] seek 校验未达标：目标 ${timeMs}ms`)
