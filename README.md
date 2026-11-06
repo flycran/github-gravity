@@ -10,28 +10,30 @@ SVG 分支视觉对比工具：对**任意两个 ref**（分支 / tag / commit�
 TOOL=/path/to/svg-compare   # 本分支的工作树/检出目录
 ```
 
-### 1. 手动预览（默认）
+### 1. 手动预览（preview）
 
 生成产物 → 起本地 serve → 自动打开浏览器。预览页支持同步播放/暂停、进度条拖动定位、±1 帧步进（空格 / ←→）、并排 / 叠加（透明度滑块）/ difference 混合三种视图，页内"生成一致性报告"按钮可触发像素级对比并就地渲染报告。
 
 ```sh
-bun $TOOL/cli.ts -- main feature-x
+bun $TOOL/cli.ts preview                       # main vs 当前 HEAD（分支可省略）
+bun $TOOL/cli.ts preview main feature-x        # 显式指定两侧
+bun $TOOL/cli.ts preview main --no-open        # 只生成并挂起 serve，不自动开浏览器
 ```
 
-### 2. 手动 CLI（无头报告）
+### 2. 手动报告（report）
 
-本地跑完输出报告文件（report.html 同款数据渲染在预览页 / report.json 机器可读），不打开浏览器不预览；判定失败时退出码为 1。
+无头跑完输出报告（report.json 机器可读 / 预览页与报告页可视化渲染），不打开浏览器；判定失败时退出码为 1。
 
 ```sh
-bun $TOOL/cli.ts -- main feature-x --report --no-open
+bun $TOOL/cli.ts report main feature-x
 ```
 
-### 3. CI 门禁
+### 3. CI 门禁（ci）
 
-无头跑完输出 report.json + summary.json + GitHub Step Summary，按三维度判定设退出码。
+无头跑完输出 report.json + summary.json + GitHub Step Summary，按三维度判定设退出码。每个子命令只声明自己需要的 flags（如 ci 下没有 --no-open），参数写错会直接报未知选项。
 
 ```sh
-bun $TOOL/cli.ts -- "$BASE_SHA" "$HEAD_SHA" --ci
+bun $TOOL/cli.ts ci "$BASE_SHA" "$HEAD_SHA"
 ```
 
 完整 workflow 集成模板（放主仓库 `.github/workflows/visual-compare.yml`，并在仓库设置里把该 check 配为 required 才能真正阻止合并）：
@@ -75,8 +77,8 @@ jobs:
         continue-on-error: ${{ steps.major-gate.outputs.enforce == 'false' }}
         run: |
           base=$(git merge-base origin/${{ github.base_ref }} HEAD)
-          bun svg-compare-tool/cli.ts -- "$base" HEAD \
-            --input svg-compare-tool/fixtures --via dist --ci
+          bun svg-compare-tool/cli.ts ci "$base" HEAD \
+            --input svg-compare-tool/fixtures --via dist
       - if: always() && steps.compare.outcome == 'failure'
         run: |
           if [ "${{ steps.major-gate.outputs.enforce }}" = "true" ]; then
@@ -93,18 +95,25 @@ jobs:
 ## 参数
 
 ```sh
-bun cli.ts <refA> <refB> [flags]
+bun cli.ts <子命令> [refA] [refB] [flags]
 
-  --input <file|dir>        共用对比输入 JSON（目录下全部 .json 视为多组合；默认工具自带 fixtures/）
+子命令：
+  preview                   生成产物并起预览服务（页内可触发一致性报告）；--no-open 不自动开浏览器
+  report                    无头跑一致性报告，未通过退出码 1
+  ci                        CI 门禁：报告 + summary.json + Step Summary
+
+参数：
+  [refA]                    对比侧 A（默认 main）
+  [refB]                    对比侧 B（默认当前 HEAD）
+
+三个子命令共享的 flags：
+  --input <file|dir>        共用对比输入 JSON 或目录（目录下全部输入文件视为多组合；默认工具自带 fixtures/）
   --input-a <file>          A 侧专用输入 JSON，覆盖 --input；未提供的一侧回退 --input 的第一个组合
   --input-b <file>          B 侧专用输入 JSON，覆盖 --input
   --via <src|dist>          生成模式：src 源码直连（默认）/ dist 生产 bundle
   --engine <smil|css>       覆盖输入中的动画引擎开关
   --frames <n>              报告采样帧数（默认 12）
   --out <dir>               产物根目录（默认 <仓库>/.svg-compare，自带忽略文件不污染 git status）
-  --report                  生成后自动跑一致性报告
-  --no-open                 不自动打开浏览器（预览 serve 仍保留）
-  --ci                      CI 门禁模式（隐含 --report --no-open）
   --pixel-threshold <n>     pixelmatch YIQ 感知容差（默认 0.1）
   --max-duration-delta <n>  时长偏差阈值（默认 0.005）
   --max-avg-diff <n>        平均差异阈值（默认 0.002）
@@ -132,8 +141,8 @@ bun cli.ts main main --input-a fixtures/default-smil.json --input-b fixtures/dp-
 .svg-compare/<组合>/
 ├── a.svg / b.svg     # 两 ref 各自生成的动画 SVG
 ├── meta.json         # ref/commit/时长/文件大小
-├── report.json       # 一致性报告（--report 时）
-└── frames/           # 逐帧 A/B/diff 截图（--report 时）
+├── report.json       # 一致性报告（report/ci 子命令或页内触发时）
+└── frames/           # 逐帧 A/B/diff 截图（report/ci 子命令或页内触发时）
 ```
 
 ## 输入约定（直通语义）

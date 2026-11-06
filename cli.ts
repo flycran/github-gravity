@@ -1,14 +1,14 @@
 /**
- * SVG 分支视觉对比工具入口（bun cli.ts <refA> <refB>）。
+ * SVG 分支视觉对比工具入口。
  *
  * 与 gensvg 项目完全解耦：工具自身不 import 被测代码，对比时把生成驱动
  * 注入 `git archive` 导出的临时目录，运行该 ref 自己的实现；
  * 产物（SVG/meta/报告）落在被测仓库的 .svg-compare/ 下并自带忽略文件。
  *
- * 三种调用方式：
- * - CI：--ci 无头跑报告，按三维度判定设退出码
- * - 手动预览：默认模式，起 serve 并打开浏览器，页内可触发生成报告
- * - 手动 CLI：--report --no-open 本地跑完输出报告文件
+ * 三个子命令（操作为主命令，分支是参数且可省略——A 默认 main，B 默认当前 HEAD）：
+ * - preview：生成产物并起预览服务，页内可触发生成一致性报告
+ * - report：无头跑一致性报告，未通过退出码 1
+ * - ci：CI 门禁，报告 + summary.json + GitHub Step Summary
  */
 
 import {
@@ -23,6 +23,7 @@ import { basename, join } from 'node:path'
 import { Command } from 'commander'
 import { exportRef, resolveRef, runDriver } from './checkout'
 import {
+  type AggregatedVerdict,
   aggregateVerdicts,
   type ComboResult,
   DEFAULT_THRESHOLDS,
@@ -43,9 +44,10 @@ import { parseSvgMeta } from './svgMeta'
 
 const TOOL_ROOT = import.meta.dir
 const DEFAULT_OUT_DIR = '.svg-compare'
+const DEFAULT_BASE_REF = 'main'
 
-/** 字段名与 commander 由 flag 名生成的属性一一对应（--input → input） */
-interface CliOptions {
+/** 三个子命令共享的生成 flags（字段名与 commander 生成的属性一一对应） */
+interface SharedOptions {
   input: string
   inputA?: string
   inputB?: string
@@ -53,14 +55,15 @@ interface CliOptions {
   engine?: 'smil' | 'css'
   frames: number
   out: string
-  report: boolean
-  open: boolean
-  ci: boolean
   keep: boolean
   maxDurationDelta: number
   maxAvgDiff: number
   maxMaxDiff: number
   pixelThreshold: number
+}
+
+interface PreviewOptions extends SharedOptions {
+  open: boolean
 }
 
 /** 一轮对比的完整配置：A/B 侧可以各用各的输入（如 SMIL vs CSS） */
@@ -70,75 +73,25 @@ interface ComboPlan {
   inputB: CompareInput
 }
 
-/** 阈值在 CLI 层平铺，报告侧收敛为三维度结构 */
-function thresholdsOf(options: CliOptions): Thresholds {
-  return {
-    maxDurationDelta: options.maxDurationDelta,
-    maxAvgDiff: options.maxAvgDiff,
-    maxMaxDiff: options.maxMaxDiff
-  }
+/** 一次对比的准备结果（生成与报告都基于它） */
+interface Prepared {
+  repoRoot: string
+  outRoot: string
+  refA: string
+  refB: string
+  commitA: string
+  commitB: string
+  plans: ComboPlan[]
 }
 
-const program = new Command()
-
-program
-  .name('svg-compare')
-  .description(
-    '任意两个 ref（分支/tag/commit）在同一份输入下生成动画 SVG，' +
-      '预览页同步播放对比，并输出像素级一致性报告'
-  )
-  .argument('<refA>', '对比侧 A：分支 / tag / commit')
-  .argument('<refB>', '对比侧 B：分支 / tag / commit')
-  .option(
-    '--input <path>',
-    '共用对比输入 JSON 文件或目录（目录下全部 .json 视为多组合）',
-    join(TOOL_ROOT, 'fixtures')
-  )
-  .option(
-    '--input-a <path>',
-    'A 侧专用输入 JSON（如 SMIL 引擎参数），覆盖 --input；单文件'
-  )
-  .option(
-    '--input-b <path>',
-    'B 侧专用输入 JSON（如 CSS 引擎参数），覆盖 --input；单文件'
-  )
-  .option('--via <mode>', '生成模式：src 源码直连 / dist 生产 bundle', 'src')
-  .option('--engine <engine>', '覆盖输入中的动画引擎开关（smil|css）')
-  .option(
-    '--frames <n>',
-    '报告采样帧数',
-    (value: string) => parseNumber(value, '--frames'),
-    12
-  )
-  .option('--out <dir>', '产物根目录（相对被测仓库）', DEFAULT_OUT_DIR)
-  .option('--report', '生成后自动跑一致性报告', false)
-  .option('--no-open', '不打开浏览器（无 --report 时 = 纯生成）')
-  .option('--ci', 'CI 门禁模式：无头报告 + summary + 按判定设退出码', false)
-  .option(
-    '--pixel-threshold <n>',
-    'pixelmatch YIQ 感知容差（0 严格 - 1 宽松）',
-    (value: string) => parseNumber(value, '--pixel-threshold'),
-    0.1
-  )
-  .option(
-    '--max-duration-delta <n>',
-    '时长偏差阈值',
-    (value: string) => parseNumber(value, '--max-duration-delta'),
-    DEFAULT_THRESHOLDS.maxDurationDelta
-  )
-  .option(
-    '--max-avg-diff <n>',
-    '平均差异阈值',
-    (value: string) => parseNumber(value, '--max-avg-diff'),
-    DEFAULT_THRESHOLDS.maxAvgDiff
-  )
-  .option(
-    '--max-max-diff <n>',
-    '最大差异阈值',
-    (value: string) => parseNumber(value, '--max-max-diff'),
-    DEFAULT_THRESHOLDS.maxMaxDiff
-  )
-  .option('--keep', '保留临时导出目录（调试用）', false)
+/** 阈值在 CLI 层平铺，报告侧收敛为三维度结构 */
+function thresholdsOf(shared: SharedOptions): Thresholds {
+  return {
+    maxDurationDelta: shared.maxDurationDelta,
+    maxAvgDiff: shared.maxAvgDiff,
+    maxMaxDiff: shared.maxMaxDiff
+  }
+}
 
 function parseNumber(value: string, label: string): number {
   const parsed = Number(value)
@@ -148,20 +101,67 @@ function parseNumber(value: string, label: string): number {
   return parsed
 }
 
-async function main(
+/** commander 子命令的 options 相互独立，共享 flags 需要逐个挂载 */
+function addSharedFlags(cmd: Command): Command {
+  return cmd
+    .option(
+      '--input <path>',
+      '共用对比输入 JSON 文件或目录（目录下全部输入文件视为多组合）',
+      join(TOOL_ROOT, 'fixtures')
+    )
+    .option('--input-a <path>', 'A 侧专用输入 JSON（单文件），覆盖 --input')
+    .option('--input-b <path>', 'B 侧专用输入 JSON（单文件），覆盖 --input')
+    .option('--via <mode>', '生成模式：src 源码直连 / dist 生产 bundle', 'src')
+    .option('--engine <engine>', '覆盖输入中的动画引擎开关（smil|css）')
+    .option(
+      '--frames <n>',
+      '报告采样帧数',
+      (value: string) => parseNumber(value, '--frames'),
+      12
+    )
+    .option('--out <dir>', '产物根目录（相对被测仓库）', DEFAULT_OUT_DIR)
+    .option(
+      '--pixel-threshold <n>',
+      'pixelmatch YIQ 感知容差（0 严格 - 1 宽松）',
+      (value: string) => parseNumber(value, '--pixel-threshold'),
+      0.1
+    )
+    .option(
+      '--max-duration-delta <n>',
+      '时长偏差阈值',
+      (value: string) => parseNumber(value, '--max-duration-delta'),
+      DEFAULT_THRESHOLDS.maxDurationDelta
+    )
+    .option(
+      '--max-avg-diff <n>',
+      '平均差异阈值',
+      (value: string) => parseNumber(value, '--max-avg-diff'),
+      DEFAULT_THRESHOLDS.maxAvgDiff
+    )
+    .option(
+      '--max-max-diff <n>',
+      '最大差异阈值',
+      (value: string) => parseNumber(value, '--max-max-diff'),
+      DEFAULT_THRESHOLDS.maxMaxDiff
+    )
+    .option('--keep', '保留临时导出目录（调试用）', false)
+}
+
+/** 公共准备：仓库校验、产物目录、ref 解析、组合计划 */
+async function prepare(
   refA: string,
   refB: string,
-  options: CliOptions
-): Promise<void> {
-  if (options.via !== 'src' && options.via !== 'dist') {
-    throw new Error(`--via 只支持 src|dist，收到 "${options.via}"`)
+  shared: SharedOptions
+): Promise<Prepared> {
+  if (shared.via !== 'src' && shared.via !== 'dist') {
+    throw new Error(`--via 只支持 src|dist，收到 "${shared.via}"`)
   }
   if (
-    options.engine !== undefined &&
-    options.engine !== 'smil' &&
-    options.engine !== 'css'
+    shared.engine !== undefined &&
+    shared.engine !== 'smil' &&
+    shared.engine !== 'css'
   ) {
-    throw new Error(`--engine 只支持 smil|css，收到 "${options.engine}"`)
+    throw new Error(`--engine 只支持 smil|css，收到 "${shared.engine}"`)
   }
   const repoRoot = process.cwd()
   if (
@@ -175,28 +175,28 @@ async function main(
   // --input-a/--input-b 指定后进入单组合模式：两侧各用各的输入（对比引擎/算法差异）；
   // 未指定的一侧回退到 --input 的第一个组合
   let plans: ComboPlan[]
-  if (options.inputA !== undefined || options.inputB !== undefined) {
-    const shared = (await loadInputs(options.input))[0]
-    const inputA = options.inputA
-      ? (await loadInputs(options.inputA))[0]
-      : shared
-    const inputB = options.inputB
-      ? (await loadInputs(options.inputB))[0]
-      : shared
+  if (shared.inputA !== undefined || shared.inputB !== undefined) {
+    const sharedInput = (await loadInputs(shared.input))[0]
+    const inputA = shared.inputA
+      ? (await loadInputs(shared.inputA))[0]
+      : sharedInput
+    const inputB = shared.inputB
+      ? (await loadInputs(shared.inputB))[0]
+      : sharedInput
     const name =
       inputA.name === inputB.name
         ? inputA.name
         : `${inputA.name}__${inputB.name}`
     plans = [{ name, inputA, inputB }]
   } else {
-    plans = (await loadInputs(options.input)).map((input) => ({
+    plans = (await loadInputs(shared.input)).map((input) => ({
       name: input.name,
       inputA: input,
       inputB: input
     }))
   }
 
-  const outRoot = join(repoRoot, options.out)
+  const outRoot = join(repoRoot, shared.out)
   mkdirSync(outRoot, { recursive: true })
   // 产物目录自带忽略文件，不污染被测仓库的 git status（工具分支与主仓库解耦，不改其 .gitignore）
   writeFileSync(join(outRoot, '.gitignore'), '*\n', 'utf-8')
@@ -204,91 +204,42 @@ async function main(
   const commitA = await resolveRef(repoRoot, refA)
   const commitB = await resolveRef(repoRoot, refB)
   console.log(
-    `对比 ${refA} (${commitA.slice(0, 7)}) ↔ ${refB} (${commitB.slice(0, 7)})，via ${options.via}` +
-      (options.inputA !== undefined || options.inputB !== undefined
-        ? `，输入 ${inputLabel(plans[0].inputA)} ↔ ${inputLabel(plans[0].inputB)}`
+    `对比 ${refA} (${commitA.slice(0, 7)}) ↔ ${refB} (${commitB.slice(0, 7)})，via ${shared.via}` +
+      (shared.inputA !== undefined || shared.inputB !== undefined
+        ? `，输入 ${plans[0].inputA.name} ↔ ${plans[0].inputB.name}`
         : '')
   )
 
+  return { repoRoot, outRoot, refA, refB, commitA, commitB, plans }
+}
+
+/** 逐组合生成产物，返回组合名列表（预览与报告共用其顺序） */
+async function generateAll(
+  prepared: Prepared,
+  shared: SharedOptions
+): Promise<string[]> {
   const combos: string[] = []
-  for (const plan of plans) {
+  for (const plan of prepared.plans) {
     combos.push(plan.name)
     console.log(`\n[${plan.name}] 生成中…`)
-    await generateCombo(
-      repoRoot,
-      outRoot,
-      refA,
-      refB,
-      options,
-      commitA,
-      commitB,
-      plan
-    )
+    await generateCombo(prepared, shared, plan)
   }
-
-  if (!options.report) {
-    // --no-open 保留 serve（不自动开浏览器），产物生成后可随时手动打开预览
-    await previewServe(
-      options,
-      outRoot,
-      combos[0],
-      '/previewPage.html',
-      options.open
-    )
-    return
-  }
-
-  const results: ComboResult[] = []
-  for (const combo of combos) {
-    console.log(`\n[${combo}] 报告生成中…`)
-    const report = await runReport({
-      outRoot,
-      toolRoot: TOOL_ROOT,
-      combo,
-      frames: options.frames,
-      pixelThreshold: options.pixelThreshold,
-      thresholds: thresholdsOf(options)
-    })
-    results.push({ name: combo, verdict: report.verdict })
-    console.log(`  报告：${join(outRoot, combo, 'report.json')}`)
-  }
-
-  const aggregated = aggregateVerdicts(results)
-  writeSummary(
-    outRoot,
-    options,
-    refA,
-    refB,
-    commitA,
-    commitB,
-    results,
-    aggregated
-  )
-  printVerdict(results, aggregated)
-
-  // 判定失败 → 非零退出码：--ci 供门禁阻止合并，--report 供脚本按码分支
-  if (!aggregated.pass) process.exitCode = 1
-  if (options.ci || !options.open) return
-  await previewServe(options, outRoot, combos[0], '/reportPage.html')
+  return combos
 }
 
 /** 导出两个 ref 并各自跑生成驱动，落 a.svg/b.svg/meta.json；同 commit 复用同一份导出 */
 async function generateCombo(
-  repoRoot: string,
-  outRoot: string,
-  refA: string,
-  refB: string,
-  options: CliOptions,
-  commitA: string,
-  commitB: string,
+  prepared: Prepared,
+  shared: SharedOptions,
   plan: ComboPlan
 ): Promise<void> {
+  const { repoRoot, outRoot, refA, refB, commitA, commitB } = prepared
   const comboDir = join(outRoot, plan.name)
   rmSync(comboDir, { recursive: true, force: true })
   mkdirSync(comboDir, { recursive: true })
 
   const driverSource =
-    options.via === 'dist' ? renderDriverDist() : renderDriverSrc()
+    shared.via === 'dist' ? renderDriverDist() : renderDriverSrc()
 
   const sameCommit = commitA === commitB
   let sharedExportDir: string | null = null
@@ -308,7 +259,7 @@ async function generateCombo(
     commitA,
     refB,
     commitB,
-    via: options.via,
+    via: shared.via,
     durationA: 0,
     durationB: 0,
     bytesA: 0,
@@ -342,7 +293,7 @@ async function generateCombo(
       // dist 模式由 driver 自行映射 INPUT_* 环境变量并拦截贡献数据请求
       const injectedInput = applyEngineOverride(
         side.input.options,
-        options.engine
+        shared.engine
       )
       writeFileSync(
         join(exportDir, INPUT_FILE),
@@ -368,14 +319,14 @@ async function generateCombo(
       )
     } finally {
       // 共享导出目录留给下一侧使用，循环外统一清理
-      if (!options.keep && !(sameCommit && sharedExportDir === exportDir)) {
+      if (!shared.keep && !(sameCommit && sharedExportDir === exportDir)) {
         rmSync(exportDir, { recursive: true, force: true })
-      } else if (options.keep) {
+      } else if (shared.keep) {
         console.log(`  保留临时导出目录：${exportDir}`)
       }
     }
   }
-  if (!options.keep && sharedExportDir !== null) {
+  if (!shared.keep && sharedExportDir !== null) {
     rmSync(sharedExportDir, { recursive: true, force: true })
   }
   writeFileSync(
@@ -394,12 +345,8 @@ function applyEngineOverride(
   return { ...options, css: engine === 'css' }
 }
 
-function inputLabel(input: CompareInput): string {
-  return input.name
-}
-
 async function previewServe(
-  options: CliOptions,
+  shared: SharedOptions,
   outRoot: string,
   combo: string,
   page = '/previewPage.html',
@@ -413,9 +360,9 @@ async function previewServe(
         outRoot,
         toolRoot: TOOL_ROOT,
         combo: name,
-        frames: options.frames,
-        pixelThreshold: options.pixelThreshold,
-        thresholds: thresholdsOf(options)
+        frames: shared.frames,
+        pixelThreshold: shared.pixelThreshold,
+        thresholds: thresholdsOf(shared)
       })
   })
   const url = `${serve.url}${page}?combo=${encodeURIComponent(combo)}`
@@ -424,9 +371,36 @@ async function previewServe(
   await new Promise(() => {})
 }
 
+/** report/ci 共用：逐组合跑报告，汇总判定，写 summary 与 Step Summary */
+async function reportAll(
+  prepared: Prepared,
+  shared: SharedOptions,
+  combos: string[]
+): Promise<AggregatedVerdict> {
+  const results: ComboResult[] = []
+  for (const combo of combos) {
+    console.log(`\n[${combo}] 报告生成中…`)
+    const report = await runReport({
+      outRoot: prepared.outRoot,
+      toolRoot: TOOL_ROOT,
+      combo,
+      frames: shared.frames,
+      pixelThreshold: shared.pixelThreshold,
+      thresholds: thresholdsOf(shared)
+    })
+    results.push({ name: combo, verdict: report.verdict })
+    console.log(`  报告：${join(prepared.outRoot, combo, 'report.json')}`)
+  }
+
+  const aggregated = aggregateVerdicts(results)
+  writeSummary(prepared, shared, results, aggregated)
+  printVerdict(results, aggregated)
+  return aggregated
+}
+
 function printVerdict(
   results: ComboResult[],
-  aggregated: ReturnType<typeof aggregateVerdicts>
+  aggregated: AggregatedVerdict
 ): void {
   const rows = results.map((result) => ({
     组合: result.name,
@@ -449,24 +423,20 @@ function printVerdict(
   )
 }
 
-/** --ci 时把判定表写进 GitHub Step Summary（存在该环境变量时） */
+/** 写 summary.json（机器可读）；存在 GITHUB_STEP_SUMMARY 时追加判定表 */
 function writeSummary(
-  outRoot: string,
-  options: CliOptions,
-  refA: string,
-  refB: string,
-  commitA: string,
-  commitB: string,
+  prepared: Prepared,
+  shared: SharedOptions,
   results: ComboResult[],
-  aggregated: ReturnType<typeof aggregateVerdicts>
+  aggregated: AggregatedVerdict
 ): void {
   const summary = {
-    refA,
-    refB,
-    commitA,
-    commitB,
-    via: options.via,
-    thresholds: thresholdsOf(options),
+    refA: prepared.refA,
+    refB: prepared.refB,
+    commitA: prepared.commitA,
+    commitB: prepared.commitB,
+    via: shared.via,
+    thresholds: thresholdsOf(shared),
     pass: aggregated.pass,
     combos: results.map((result) => ({
       name: result.name,
@@ -475,7 +445,7 @@ function writeSummary(
     createdAt: new Date().toISOString()
   }
   writeFileSync(
-    join(outRoot, 'summary.json'),
+    join(prepared.outRoot, 'summary.json'),
     JSON.stringify(summary, null, 2),
     'utf-8'
   )
@@ -483,7 +453,7 @@ function writeSummary(
   const stepSummaryPath = process.env.GITHUB_STEP_SUMMARY
   if (!stepSummaryPath) return
   const lines = [
-    `## SVG 视觉对比（${refA} ↔ ${refB}，via ${options.via}）`,
+    `## SVG 视觉对比（${prepared.refA} ↔ ${prepared.refB}，via ${shared.via}）`,
     '',
     '| 组合 | 总时长偏差 | 平均差异 | 最大差异 | 结果 |',
     '|---|---|---|---|---|',
@@ -492,7 +462,7 @@ function writeSummary(
         `| ${result.name} | ${percent(result.verdict.durationDelta)} | ${percent(result.verdict.avgDiff)} | ${percent(result.verdict.maxDiff)} | ${result.verdict.pass ? '✅' : '❌'} |`
     ),
     '',
-    `**总体判定：${aggregated.pass ? '通过' : '未通过'}**（阈值：时长 ≤ ${percent(options.maxDurationDelta)}，平均 ≤ ${percent(options.maxAvgDiff)}，最大 ≤ ${percent(options.maxMaxDiff)}）`
+    `**总体判定：${aggregated.pass ? '通过' : '未通过'}**（阈值：时长 ≤ ${percent(shared.maxDurationDelta)}，平均 ≤ ${percent(shared.maxAvgDiff)}，最大 ≤ ${percent(shared.maxMaxDiff)}）`
   ]
   writeFileSync(stepSummaryPath, `${lines.join('\n')}\n`, { flag: 'a' })
 }
@@ -501,14 +471,68 @@ function percent(value: number): string {
   return `${(value * 100).toFixed(2)}%`
 }
 
+const program = new Command()
+
 program
-  .action(async (refA: string, refB: string, options: CliOptions) => {
-    await main(refA, refB, options)
-  })
-  .parseAsync(process.argv)
-  .catch((error: unknown) => {
-    console.error(
-      `[svg-compare] ${error instanceof Error ? error.stack : String(error)}`
+  .name('svg-compare')
+  .description(
+    '任意两个 ref 在同一份输入下生成动画 SVG，预览页同步播放对比，' +
+      '并输出像素级一致性报告。分支可省略：A 默认 main，B 默认当前 HEAD'
+  )
+
+const preview = program
+  .command('preview')
+  .description('生成产物并起预览服务（页内可触发生成一致性报告）')
+  .argument('[refA]', '对比侧 A：分支 / tag / commit', DEFAULT_BASE_REF)
+  .argument('[refB]', '对比侧 B：分支 / tag / commit', 'HEAD')
+  .option('--no-open', '不自动打开浏览器（预览 serve 仍保留）')
+addSharedFlags(preview).action(
+  async (refA: string, refB: string, options: PreviewOptions) => {
+    const prepared = await prepare(refA, refB, options)
+    const combos = await generateAll(prepared, options)
+    await previewServe(
+      options,
+      prepared.outRoot,
+      combos[0],
+      '/previewPage.html',
+      options.open
     )
-    process.exitCode = 1
-  })
+  }
+)
+
+const report = program
+  .command('report')
+  .description('无头生成一致性报告并输出判定（未通过退出码 1）')
+  .argument('[refA]', '对比侧 A：分支 / tag / commit', DEFAULT_BASE_REF)
+  .argument('[refB]', '对比侧 B：分支 / tag / commit', 'HEAD')
+addSharedFlags(report).action(
+  async (refA: string, refB: string, options: SharedOptions) => {
+    const prepared = await prepare(refA, refB, options)
+    const combos = await generateAll(prepared, options)
+    const aggregated = await reportAll(prepared, options, combos)
+    if (!aggregated.pass) process.exitCode = 1
+  }
+)
+
+const ci = program
+  .command('ci')
+  .description(
+    'CI 门禁：报告 + summary.json + GitHub Step Summary（未通过退出码 1）'
+  )
+  .argument('[refA]', '对比侧 A：分支 / tag / commit', DEFAULT_BASE_REF)
+  .argument('[refB]', '对比侧 B：分支 / tag / commit', 'HEAD')
+addSharedFlags(ci).action(
+  async (refA: string, refB: string, options: SharedOptions) => {
+    const prepared = await prepare(refA, refB, options)
+    const combos = await generateAll(prepared, options)
+    const aggregated = await reportAll(prepared, options, combos)
+    if (!aggregated.pass) process.exitCode = 1
+  }
+)
+
+program.parseAsync(process.argv).catch((error: unknown) => {
+  console.error(
+    `[svg-compare] ${error instanceof Error ? error.message : String(error)}`
+  )
+  process.exitCode = 1
+})
