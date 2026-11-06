@@ -52384,13 +52384,12 @@ function describeFont(font) {
  * 通道化轨迹压缩。
  *
  * 轨迹由独立标量通道组成：x、y 与自转角，每个通道按自己的容差独立分段——
- * 垂直下落中几乎恒定的 x 通道收缩为两个关键帧并可在消费端折叠为静态值，
- * 主导运动的 y 通道不受影响；旋转剧变也只有旋转通道加密。各通道时间轴互不
- * 相同，消费端按各自的 span 还原节奏。
+ * 垂直下落中几乎恒定的 x 通道收缩为两个关键帧，主导运动的 y 通道不受
+ * 影响；旋转剧变也只有旋转通道加密。各通道时间轴互不相同，播放节奏由
+ * 各自的 span 描述。
  *
  * 另提供联合位置表达（joint）：x、y 共享时间轴、以欧氏偏差为约束。分轴划分
- * 的折点时刻错开时，联合表达的帧数更少，供只能消费 "x,y" 绑定的引擎（SMIL
- * translate）使用。
+ * 的折点时刻错开时，联合表达的帧数更少。
  */
 function assertTolerance(tolerance) {
     if (tolerance < 0) {
@@ -52591,8 +52590,8 @@ function simplifyPositions(xs, ys, tolerance, algorithm) {
     return result;
 }
 /**
- * 把原始采样包装成无 span 的关键帧轨迹：未压缩路径供消费端统一按
- * 关键帧接口处理（仅调试用途，不参与性能关键的记录与压缩）。
+ * 把原始采样包装成无 span 的关键帧轨迹，让未压缩路径与压缩路径共用
+ * 同一轨迹接口（仅调试用途，不参与性能关键的记录与压缩）。
  */
 function toKeyframeTrajectory(raw) {
     return {
@@ -52609,11 +52608,11 @@ function toKeyframeTrajectory(raw) {
  * @param trajectory 原始采样轨迹
  * @param tolerance 单轴位置容差，物理坐标单位
  * @param maxRotationError 自转角插值误差上限（弧度）；0 为不压缩旋转通道，
- *   全量保留并按帧序均分时间
+ *   全量保留
  * @param algorithm 分段算法。默认 Greedy：真实轨迹上关键帧数仅比全局最优
  *   （DP）多 1~3%，耗时低一个数量级；追求极致体积可改用 DP
- * @param withJoint 同时产出联合位置表达（欧氏容差），供 SMIL 这类只能
- *   消费绑定 "x,y" 的引擎使用；拆分通道折点错开时联合帧数更少
+ * @param withJoint 同时产出联合位置表达（欧氏容差）；拆分通道折点错开时
+ *   联合帧数更少
  */
 function compressTrajectory(trajectory, tolerance, maxRotationError, algorithm = 'Greedy', withJoint = false) {
     const rotation = trajectory.rotation;
@@ -52711,13 +52710,12 @@ function compactUnion(points, times) {
     return { points: keptPoints, times: keptTimes };
 }
 /**
- * 把拆分的 x/y 通道重联合为 translate 消费的帧序列。
+ * 把拆分的 x/y 通道重联合为共享时间轴的帧序列。
  *
  * 时刻取两通道关键帧时间轴的并集：并集相邻点之间两轴都线性，合成轨迹
  * 仍是精确的匀速直线段，每个并集时刻两轴都精确命中各自通道的插值值，
  * 因此联合表达与拆分表达视觉无损等价。并集中两轴都共线匀速的冗余点
- * 会被无损合并掉。供不支持单轴插值的消费端（SMIL translate 的 values
- * 是绑定的 "x,y" 对）使用。
+ * 会被无损合并掉。
  */
 function mergePositionChannels(x, y) {
     const uniform = x[0].span === undefined && y[0].span === undefined;
@@ -52754,7 +52752,7 @@ function mergePositionChannels(x, y) {
 /**
  * 将关键帧的 span 归一化为时间数组：各时刻 = span 前缀和占总和的比例，
  * 首帧恒为 0、末帧恒为 1。适用于任意通道的关键帧序列；未启用压缩
- * （无 span）时返回 null，消费端按帧序均分时间处理。
+ * （无 span）时返回 null。
  */
 function buildKeyTimesArray(frames) {
     if (frames.length < 2 || frames[0].span === undefined)
