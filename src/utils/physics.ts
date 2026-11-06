@@ -216,9 +216,9 @@ export function getTextBoundBox(
 }
 
 /** 渲染用贡献方块：轨迹已统一为关键帧形态（未压缩时为无 span 的全量关键帧） */
-export interface RenderedContribution {
-  date: string
-  color: string
+/** 渲染产物：模拟产出的贡献方块叠加压缩后的轨迹 */
+export interface RenderedContribution
+  extends Omit<ContributionJson, 'trajectory'> {
   trajectory: Trajectory
 }
 
@@ -234,15 +234,9 @@ export interface SimulationResult {
 }
 
 /** 纯物理模拟的结果：轨迹为未经压缩的原始采样序列 */
-export interface RawSimulationResult {
-  stepCount: number
-  time: number
-  textPaths: Pick<TextPathResult, 'rect' | 'pathData'>[]
+export interface RawSimulationResult
+  extends Omit<SimulationResult, 'contributions'> {
   contributions: ContributionJson[]
-  /** 文字在物理世界中的 X 偏移量 */
-  offsetX: number
-  /** 文字在物理世界中的 Y 偏移量 */
-  centerY: number
 }
 
 export interface SimulationOptions {
