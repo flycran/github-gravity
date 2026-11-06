@@ -138,7 +138,7 @@ inputs:
       Optional GitHub token. When this input is set, or GITHUB_TOKEN is present
       in the environment, contributions are fetched from the official GraphQL
       API; otherwise the public gh-calendar API is used as a fallback.
-      Pass `${{ secrets.GITHUB_TOKEN }}`.
+      Pass `secrets.GITHUB_TOKEN` from the workflow.
     required: false
 
 outputs:
