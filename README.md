@@ -58,6 +58,7 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 | `size` | ❌ | `4` | Side length of each contribution block. ⚠️ Affects physics |
 | `interval` | ❌ | `1.5` | Spacing between contribution blocks. ⚠️ Affects physics |
 | `font-path` | ❌ | bundled font | Custom font file (`.ttf`/`.otf`), relative to the repository root, or an `http(s)` URL. ⚠️ Some fonts may fail to load |
+| `token` | ❌ | - | GitHub token for the official GraphQL contributions API. When set, the official driver is preferred; without it the public gh-calendar API is used as a fallback. Pass `${{ secrets.GITHUB_TOKEN }}` |
 
 ### Reducing file size
 

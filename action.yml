@@ -133,6 +133,12 @@ inputs:
       or self-intersecting contours that the triangulation algorithm rejects, and some cannot
       be parsed by opentype.js at all.
     required: false
+  token:
+    description: >-
+      Optional GitHub token. When set, contributions are fetched from the
+      official GraphQL API; otherwise the public gh-calendar API is used as a
+      fallback. Pass `${{ secrets.GITHUB_TOKEN }}`.
+    required: false
 
 outputs:
   svg-path:
