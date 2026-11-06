@@ -118,11 +118,9 @@ function bind(data: CompareData): void {
   })
   viewSelect.addEventListener('change', () => {
     document.body.dataset.view = viewSelect.value
+    applyViewOpacity()
   })
-  opacityInput.addEventListener('input', () => {
-    paneB.style.opacity = opacityInput.value
-    opacityLabel.textContent = Number(opacityInput.value).toFixed(2)
-  })
+  opacityInput.addEventListener('input', applyViewOpacity)
   document.addEventListener('keydown', (event) => {
     if (
       event.target instanceof HTMLInputElement ||
@@ -144,6 +142,14 @@ function seekAll(ms: number): void {
   clockB?.seek(clamped)
   progress.value = String(clamped)
   timeLabel.textContent = `${(clamped / 1000).toFixed(2)}s / ${(duration / 1000).toFixed(2)}s`
+}
+
+/** B 的不透明度只在叠加 / difference 视图有意义；并排必须清除内联值，
+ * 否则上次滑动的半透明会残留到并排视图 */
+function applyViewOpacity(): void {
+  const view = document.body.dataset.view
+  paneB.style.opacity = view === 'side' ? '' : opacityInput.value
+  opacityLabel.textContent = Number(opacityInput.value).toFixed(2)
 }
 
 function stepBy(frames: number): void {

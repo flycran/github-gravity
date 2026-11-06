@@ -51,17 +51,22 @@
       body[data-view='difference'] .opacity-wrap { display: flex; }
 
       main { padding: 16px; }
-      #stage { display: flex; gap: 16px; justify-content: center; }
+      /* 并排：两列各占一半可用宽度；pane 高度由 SVG 的 viewBox 比例自动撑开 */
+      #stage {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        width: 100%;
+      }
       .pane {
         position: relative;
         width: 100%;
-        max-width: 640px;
         background: #fff;
         border: 1px solid var(--border);
         border-radius: 8px;
         overflow: hidden;
       }
-      .pane svg { display: block; width: 100%; height: 100%; }
+      .pane svg { display: block; width: 100%; height: auto; }
       .pane-label {
         position: absolute;
         top: 8px;
@@ -72,20 +77,24 @@
         border-radius: 10px;
         color: #fff;
       }
+      /* 叠加 / difference 下画面重合，A/B 角标失去意义（低特异性规则前置避免降序警告） */
+      body[data-view='overlay'] .pane-label,
+      body[data-view='difference'] .pane-label { display: none; }
       #pane-a .pane-label { background: #0969da; }
       #pane-b .pane-label { background: #d9480f; }
 
-      body[data-view='overlay'] #stage,
-      body[data-view='difference'] #stage { justify-content: flex-start; }
-      body[data-view='overlay'] .pane,
-      body[data-view='difference'] .pane { grid-area: stack; }
+      /* 叠加 / difference：两个 pane 重叠在同一格，居中且与并排同尺寸（切换不跳变）；
+         画面重合后 A/B 角标失去意义，隐藏；B 的不透明度由脚本统一管理 */
       body[data-view='overlay'] #stage,
       body[data-view='difference'] #stage {
-        display: grid;
-        grid-template-areas: 'stack';
+        grid-template-columns: minmax(0, 1fr);
+        justify-items: center;
       }
-      body[data-view='overlay'] #pane-b,
-      body[data-view='difference'] #pane-b { opacity: 0.5; }
+      body[data-view='overlay'] .pane,
+      body[data-view='difference'] .pane {
+        grid-area: 1 / 1;
+        width: min(100%, calc(50vw - 40px));
+      }
       body[data-view='difference'] #pane-b svg { mix-blend-mode: difference; }
 
       footer {
