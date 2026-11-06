@@ -1,10 +1,10 @@
 # svg-compare
 
-SVG 分支视觉对比工具：对**任意两个 ref**（分支 / tag / commit）用**同一份输入**各自生成 github-gravity 的动画 SVG，预览页同步播放对比，并输出像素级一致性报告。
+SVG 视觉对比工具：把任意 ref（分支 / tag / commit）的代码导出后各自生成 github-gravity 的动画 SVG，在预览页同步播放对比，并输出像素级一致性报告。默认两侧共用一份输入对比两个 ref；只给一个 ref 时两侧都用它，配合各自的输入即可对比 SMIL / CSS 引擎、不同压缩算法等差异。`report` / `ci` 子命令在无头环境复现同一套对比与阈值判定。
 
 ## 调用方式
 
-在被测仓库根目录运行（工具依赖 `git` 与 `bun`）：
+工具的 ref 解析、`git archive` 与产物目录都以**当前工作目录所在的 git 仓库**为准——在哪个仓库里运行，就对比哪个仓库的 ref（工具目录本身可以是独立 worktree）。依赖 `git` 与 `bun`：
 
 ```sh
 TOOL=/path/to/svg-compare   # 本分支的工作树/检出目录
@@ -94,10 +94,6 @@ jobs:
           path: .svg-compare/
 ```
 
-**对比基准的选择**：A 用 `github.event.pull_request.base.sha`（PR 发起时的 base 提交，不会因 main 前进而漂移），B 用 checkout 出来的 `HEAD`（PR 的 merge commit，即合并后的状态）。两者都是 merge commit 的祖先/自身，`fetch-depth: 0` 下必然在本地。
-
-**fork PR 说明**：workflow 定义在 base 仓库、在 base 仓库的 runner 上运行，`checkout@v6` 拉取的是 `refs/pull/N/merge`，其两个父提交就是 base.sha 和 head.sha。配合 `fetch-depth: 0`，这两个提交必然在本地对象库中，工具无需任何 secrets，也不需要额外的 fetch 步骤。
-
 ## 参数
 
 ```sh
@@ -177,7 +173,7 @@ bun cli.ts preview main --input-a configs/preview/smil.ts --input-b configs/batc
 
 输入支持 `.json` 与 `.ts`/`.js`（bun 原生导入；TS 输入须 default export 一个对象）两种格式，内容原样透传给被测 ref 的 `gensvg`（`calendarList` 注入贡献数据保证离线确定性）。工具**不做**字段白名单、跨版本兼容映射与默认值合并——不同 ref 的选项字段差异由调用方自行判断，字段不被某 ref 支持时透出该 ref 的原始报错。`--engine` 是唯一例外（轻量覆盖引擎开关，其余字段不动）。
 
-目录模式扫描全部输入文件为多组合；**以 `_` 开头的 TS 文件视为共享模块**，不作为组合——自带的 `fixtures/_calendar.ts` 就是这样被三个 fixture 共用同一份贡献数据，修改只改一处。
+目录模式扫描该目录下的全部输入文件为多组合（不递归子目录）。共享数据放在目录外层，组合文件 `import '../calendar.ts'` 引用——自带的 `configs/calendar.ts` 就是这样被 `configs/batch/` 下的各组合共用，修改只改一处。
 
 ## 生成模式
 
