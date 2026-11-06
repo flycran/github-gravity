@@ -345,7 +345,7 @@ async function previewServe(
   })
   const url = `${serve.url}${page}?combo=${encodeURIComponent(combo)}`
   console.log(`\n预览服务：${url}（Ctrl+C 退出）`)
-  if (open) openBrowser(url)
+  if (open) await openBrowser(url)
   await new Promise(() => {})
 }
 

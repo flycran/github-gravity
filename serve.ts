@@ -11,6 +11,7 @@
 
 import { readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import open from 'open'
 import type { ReportData } from './pages/reportView'
 import type { SvgEngine } from './svgMeta'
 
@@ -230,14 +231,13 @@ function safeJoin(root: string, relative: string): string | null {
   return resolved.startsWith(`${base}/`) ? resolved : null
 }
 
-/** 优先 WSL 的浏览器打开命令，全部不可用时打印 URL 兜底 */
-export function openBrowser(url: string): void {
-  for (const command of ['wslview', 'xdg-open', 'explorer.exe']) {
-    if (Bun.which(command) === '') continue
-    Bun.spawn([command, url], { stdout: 'ignore', stderr: 'ignore' })
-    return
+/** 用系统默认浏览器打开（open 包内置 WSL 的 cmd.exe start 处理），失败打印 URL 兜底 */
+export async function openBrowser(url: string): Promise<void> {
+  try {
+    await open(url)
+  } catch {
+    console.log(`请手动打开预览页：${url}`)
   }
-  console.log(`请手动打开预览页：${url}`)
 }
 
 /** 列出产物根下的组合目录（按名字排序） */
