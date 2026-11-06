@@ -43,7 +43,7 @@ const stepForwardBtn = document.getElementById(
 ) as HTMLButtonElement
 const progress = document.getElementById('progress') as HTMLInputElement
 const timeLabel = document.getElementById('time-label') as HTMLSpanElement
-const viewSelect = document.getElementById('view') as HTMLSelectElement
+const viewGroup = document.getElementById('view') as HTMLFieldSetElement
 const opacityInput = document.getElementById('opacity') as HTMLInputElement
 const opacityLabel = document.getElementById('opacity-label') as HTMLSpanElement
 const refBadgeA = document.getElementById('ref-a') as HTMLElement
@@ -116,8 +116,12 @@ function bind(data: CompareData): void {
     pause()
     seekAll(Number(progress.value))
   })
-  viewSelect.addEventListener('change', () => {
-    document.body.dataset.view = viewSelect.value
+  // radio 的 change 事件冒泡到 fieldset，一组监听即可
+  viewGroup.addEventListener('change', () => {
+    const checked = viewGroup.querySelector(
+      'input[name="view"]:checked'
+    ) as HTMLInputElement
+    document.body.dataset.view = checked.value
     applyViewOpacity()
   })
   opacityInput.addEventListener('input', applyViewOpacity)
