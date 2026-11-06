@@ -17,9 +17,9 @@ jobs:
       - uses: actions/checkout@v6
       - uses: jdx/mise-action@v2
       - run: bun install --frozen-lockfile
-      - run: bunx biome check .
-      - run: bunx tsc --noEmit -p tsconfig.json
-      - run: bunx tsc --noEmit -p pages/tsconfig.json
+      - run: bun x biome check .
+      - run: bun x tsc --noEmit -p tsconfig.json
+      - run: bun x tsc --noEmit -p pages/tsconfig.json
       - run: bun test
 
   smoke:
@@ -42,7 +42,7 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-      - run: bunx playwright install chromium --with-deps
+      - run: bun x playwright install chromium --with-deps
 
       # 同一 ref 左右两侧对比，判定应为通过且三维度精确 0
       - name: compare main with itself

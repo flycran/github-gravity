@@ -70,7 +70,7 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-      - run: bunx playwright install chromium --with-deps
+      - run: bun x playwright install chromium --with-deps
       # 工具分支 checkout 到子目录，与主仓库代码互不干扰（来自 base 仓库，fork 同样可用）
       - uses: actions/checkout@v6
         with:
@@ -209,5 +209,5 @@ bun cli.ts preview main --input-a configs/preview/smil.ts --input-b configs/batc
 bun install
 bun test        # 单元测试
 bun run lint    # biome check
-bunx playwright install chromium   # 自动报告的浏览器（一次性）
+bun x playwright install chromium   # 自动报告的浏览器（一次性）
 ```
