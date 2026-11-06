@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SVG 视觉对比报告</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        color: #1f2328;
+      }
+      header {
+        padding: 10px 16px;
+        border-bottom: 1px solid #d0d7de;
+        background: #f6f8fa;
+        font-size: 14px;
+      }
+      header a { color: #0969da; }
+      main { padding: 0 16px 24px; }
+      h2 { font-size: 15px; }
+      h3 { font-size: 14px; }
+      .verdict .dim-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+      .dim-card {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px 14px;
+        border: 1px solid #d0d7de;
+        border-radius: 8px;
+        min-width: 140px;
+      }
+      .dim-card.pass { border-color: #1a7f37; }
+      .dim-card.fail { border-color: #d9480f; background: #fff5ee; }
+      .dim-card .dim-name { font-size: 12px; color: #57606a; }
+      .dim-card small { color: #57606a; }
+      .peak { font-size: 13px; color: #57606a; }
+      canvas { max-width: 100%; }
+      table { border-collapse: collapse; font-size: 13px; width: 100%; }
+      th, td { border: 1px solid #d0d7de; padding: 4px 8px; text-align: right; }
+      tbody tr { cursor: pointer; }
+      tbody tr.active { background: #ddf4ff; }
+      .frame-viewer { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+      .frame-viewer figure { margin: 0; text-align: center; }
+      .frame-viewer img { max-width: 320px; width: 100%; border: 1px solid #d0d7de; }
+      .frame-viewer figcaption { font-size: 12px; color: #57606a; }
+      #error { color: #d9480f; padding: 16px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a href="/previewPage.html">← 返回预览</a>
+    </header>
+    <main>
+      <div id="report"><p>加载中…</p></div>
+      <pre id="error" hidden></pre>
+    </main>
+    <script type="module" src="./reportPage.ts"></script>
+  </body>
+</html>

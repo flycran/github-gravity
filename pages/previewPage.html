@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SVG 视觉对比</title>
+    <style>
+      :root {
+        --border: #d0d7de;
+        --bg: #f6f8fa;
+        --fg: #1f2328;
+        --accent: #0969da;
+        --danger: #d9480f;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        color: var(--fg);
+        background: #fff;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg);
+      }
+      header h1 { font-size: 16px; margin: 0; }
+      .ref-badge { font-size: 12px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 12px; }
+      .ref-badge[data-side='a'] { border-color: #0969da; }
+      .ref-badge[data-side='b'] { border-color: #d9480f; }
+      header .spacer { flex: 1; }
+      button, select {
+        font: inherit;
+        padding: 4px 12px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: #fff;
+        cursor: pointer;
+      }
+      button:hover:not(:disabled) { background: var(--bg); }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+      button.primary:hover:not(:disabled) { background: #0757ba; }
+      .view-label { font-size: 13px; color: #57606a; }
+      .opacity-wrap { display: none; align-items: center; gap: 6px; font-size: 13px; }
+      body[data-view='overlay'] .opacity-wrap,
+      body[data-view='difference'] .opacity-wrap { display: flex; }
+
+      main { padding: 16px; }
+      #stage { display: flex; gap: 16px; justify-content: center; }
+      .pane {
+        position: relative;
+        width: 100%;
+        max-width: 640px;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .pane svg { display: block; width: 100%; height: 100%; }
+      .pane-label {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        z-index: 2;
+        font-size: 12px;
+        padding: 1px 8px;
+        border-radius: 10px;
+        color: #fff;
+      }
+      #pane-a .pane-label { background: #0969da; }
+      #pane-b .pane-label { background: #d9480f; }
+
+      body[data-view='overlay'] #stage,
+      body[data-view='difference'] #stage { justify-content: flex-start; }
+      body[data-view='overlay'] .pane,
+      body[data-view='difference'] .pane { grid-area: stack; }
+      body[data-view='overlay'] #stage,
+      body[data-view='difference'] #stage {
+        display: grid;
+        grid-template-areas: 'stack';
+      }
+      body[data-view='overlay'] #pane-b,
+      body[data-view='difference'] #pane-b { opacity: 0.5; }
+      body[data-view='difference'] #pane-b svg { mix-blend-mode: difference; }
+
+      footer {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 16px;
+        border-top: 1px solid var(--border);
+        background: var(--bg);
+      }
+      #progress { flex: 1; }
+      #time-label { font-size: 13px; font-variant-numeric: tabular-nums; min-width: 110px; }
+
+      #report-panel { padding: 0 16px 24px; }
+      #report-panel:empty { display: none; }
+      #report-panel h2 { font-size: 15px; }
+      .verdict .dim-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+      .dim-card {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        min-width: 140px;
+      }
+      .dim-card.pass { border-color: #1a7f37; }
+      .dim-card.fail { border-color: var(--danger); background: #fff5ee; }
+      .dim-card .dim-name { font-size: 12px; color: #57606a; }
+      .dim-card small { color: #57606a; }
+      .peak { font-size: 13px; color: #57606a; }
+      #report-panel table { border-collapse: collapse; font-size: 13px; width: 100%; }
+      #report-panel th, #report-panel td { border: 1px solid var(--border); padding: 4px 8px; text-align: right; }
+      #report-panel tbody tr { cursor: pointer; }
+      #report-panel tbody tr.active { background: #ddf4ff; }
+      .frame-viewer { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+      .frame-viewer figure { margin: 0; text-align: center; }
+      .frame-viewer img { max-width: 320px; width: 100%; border: 1px solid var(--border); }
+      .frame-viewer figcaption { font-size: 12px; color: #57606a; }
+    </style>
+  </head>
+  <body data-view="side">
+    <header>
+      <h1>SVG 视觉对比</h1>
+      <span class="ref-badge" data-side="a" id="ref-a">A</span>
+      <span class="ref-badge" data-side="b" id="ref-b">B</span>
+      <span class="view-label">视图</span>
+      <select id="view">
+        <option value="side">并排</option>
+        <option value="overlay">叠加</option>
+        <option value="difference">difference</option>
+      </select>
+      <label class="opacity-wrap">
+        B 不透明度
+        <input type="range" id="opacity" min="0" max="1" step="0.01" value="0.5" />
+        <span id="opacity-label">0.50</span>
+      </label>
+      <span class="spacer"></span>
+      <span id="combo-label" class="view-label"></span>
+      <button class="primary" id="report-btn" type="button">生成一致性报告</button>
+    </header>
+
+    <main>
+      <div id="stage">
+        <div class="pane" id="pane-a"><span class="pane-label">A</span></div>
+        <div class="pane" id="pane-b"><span class="pane-label">B</span></div>
+      </div>
+    </main>
+
+    <footer>
+      <button id="play" type="button">播放</button>
+      <button id="step-back" type="button" title="后退一帧">◀</button>
+      <input type="range" id="progress" min="0" max="0" step="1" value="0" />
+      <button id="step-forward" type="button" title="前进一帧">▶</button>
+      <span id="time-label">0.00s / 0.00s</span>
+    </footer>
+
+    <div id="report-panel"></div>
+    <script type="module" src="./previewPage.ts"></script>
+  </body>
+</html>
