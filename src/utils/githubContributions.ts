@@ -34,7 +34,6 @@ export const INTENSITY_COLORS = [
 export interface FetchContributionsOptions {
   /**
    * GraphQL 渠道使用的 token，默认取 GITHUB_TOKEN 环境变量。
-   * 未提供时回落到无需认证的 gh-calendar 渠道。
    */
   token?: string
   /** 限制返回的周数，不传则返回整个窗口 */
@@ -89,7 +88,7 @@ interface GraphqlResponse {
   errors?: { message: string }[]
 }
 
-/** 官方贡献日历的窗口上限为一年，两个驱动共用同一窗口 */
+/** 两个驱动共用的贡献日历窗口 */
 function contributionWindow(now = new Date()) {
   const to = new Date(now)
   const from = new Date(now)
@@ -108,7 +107,7 @@ function clipToWindow(
     .filter((week) => week.length > 0)
 }
 
-/** 按周数截断，保留最近的 N 周 */
+/** 保留最近的 N 周 */
 function limitWeeks(contributions: RawContributionDay[][], limit?: number) {
   return limit ? contributions.slice(-limit) : contributions
 }
@@ -189,7 +188,7 @@ export async function fetchContributionsFromGraphql(
  *
  * @param username - GitHub 用户名
  * @param limit - 限制返回的周数
- * @throws 如果请求失败或用户名不存在
+ * @throws 请求失败或用户名不存在
  */
 export async function fetchContributionsFromCalendar(
   username: string,

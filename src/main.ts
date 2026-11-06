@@ -124,7 +124,6 @@ export async function run(): Promise<void> {
     const animation = input.animation || undefined
     const fontPath = input['font-path']
 
-    // token 只被数据获取层消费，经环境变量传入，避免贯穿整条渲染管线
     if (input.token.trim()) process.env.GITHUB_TOKEN = input.token.trim()
 
     core.info(`Generating gravity SVG for user: ${username}`)

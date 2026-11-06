@@ -3,8 +3,6 @@
  *
  * 需要 GITHUB_TOKEN 才能走官方 GraphQL 渠道：
  *   GITHUB_TOKEN=$(gh auth token) bun scripts/compareContributions.ts [username]
- *
- * 不做断言库封装：逐字段用 === 比较，便于在差异来自上游缓存时看出具体日期。
  */
 import {
   fetchContributionsFromCalendar,
