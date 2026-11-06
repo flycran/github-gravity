@@ -60,11 +60,12 @@ jobs:
         working-directory: svg-compare-tool
         run: bun x playwright install chromium --with-deps
 
+      # src 模式依赖 base 支持 calendarList（v3.3.3 起），base 恒为最新 main
       - name: Compare base and head visually
         id: compare
         continue-on-error: ${{ steps.major-gate.outputs.enforce == 'false' }}
         run: |
-          bun svg-compare-tool/cli.ts ci '${{ github.event.pull_request.base.sha }}' HEAD --via dist
+          bun svg-compare-tool/cli.ts ci '${{ github.event.pull_request.base.sha }}' HEAD --via src
 
       - name: Enforce result
         id: enforce
