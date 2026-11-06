@@ -60,9 +60,7 @@ jobs:
         working-directory: svg-compare-tool
         run: bun x playwright install chromium --with-deps
 
-      # 对比只针对最新 main 的 base，calendarList（v3.3.3 起）必然可用，因此走 src 模式：
-      # dist 模式经 @actions/core 的 INPUT_* 与 run() 生成，会受作业环境变量（如 GITHUB_TOKEN）
-      # 影响而偏离注入的固定数据
+      # src 模式依赖 base 支持 calendarList（v3.3.3 起），base 恒为最新 main
       - name: Compare base and head visually
         id: compare
         continue-on-error: ${{ steps.major-gate.outputs.enforce == 'false' }}
