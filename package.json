@@ -46,7 +46,6 @@
   "license": "MIT",
   "dependencies": {
     "@actions/core": "^3.0.0",
-    "@dimforge/rapier2d": "^0.19.3",
     "@dimforge/rapier2d-compat": "^0.19.3",
     "@kitajs/html": "^4.2.13",
     "opentype.js": "^2.0.0",
@@ -67,8 +66,5 @@
     "pixi.js": "^8.22.0",
     "rollup": "^4.57.1",
     "typescript": "^5.9.3"
-  },
-  "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "*"
   }
 }

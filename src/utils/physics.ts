@@ -179,9 +179,6 @@ export interface TextPathResult {
 
 /**
  * 计算所有字形的整体包围盒
- * @param textPaths
- * @param param1
- * @returns
  */
 export function getTextBoundBox(
   textPaths: TextPathResult[],
@@ -215,7 +212,6 @@ export function getTextBoundBox(
   }
 }
 
-/** 渲染用贡献方块：轨迹已统一为关键帧形态（未压缩时为无 span 的全量关键帧） */
 /** 渲染产物：模拟产出的贡献方块叠加压缩后的轨迹 */
 export interface RenderedContribution
   extends Omit<ContributionJson, 'trajectory'> {
@@ -247,8 +243,8 @@ export interface SimulationOptions {
   /** 字体大小 */
   fontSize?: number
   /**
-   * 轨迹压缩容差，单位 SVG 像素。播放时每个原始时刻的插值坐标与真实坐标
-   * 在横向、纵向上各自的偏差不超过该值
+   * 轨迹压缩容差，单位 SVG 坐标单位。播放时每个原始时刻的插值坐标与真实坐标
+   * 的偏差不超过该值（CSS 引擎按轴向、SMIL 按合成位移）
    */
   compressionTolerance?: number
   /** 禁用轨迹压缩，保留完整轨迹。调试用途，action无法禁用压缩 */
