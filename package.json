@@ -1,7 +1,7 @@
 {
   "name": "svg-compare",
   "version": "0.1.0",
-  "description": "SVG 分支视觉对比工具：任意两个 ref 在同一份输入下生成动画 SVG，预览同步播放并输出像素级一致性报告",
+  "description": "SVG 视觉对比工具：导出任意 ref 各自生成动画 SVG，预览同步播放并输出像素级一致性报告",
   "type": "module",
   "private": true,
   "scripts": {
@@ -19,6 +19,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
     "@types/bun": "^1.4.4",
-    "@types/pngjs": "^6.0.5"
+    "@types/pngjs": "^6.0.5",
+    "typescript": "5.9"
   }
 }

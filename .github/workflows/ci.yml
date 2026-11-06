@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [tools/svg-compare]
+  pull_request:
+    branches: [tools/svg-compare]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: lint / typecheck / test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: jdx/mise-action@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx biome check .
+      - run: bunx tsc --noEmit -p tsconfig.json
+      - run: bunx tsc --noEmit -p pages/tsconfig.json
+      - run: bun test
+
+  smoke:
+    name: 端到端冒烟（同 ref 应零差异）
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 才能取到主分支历史，用于导出 gensvg 代码
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@v2
+      - run: bun install --frozen-lockfile
+
+      # 对比目标是主仓库 main 的 gensvg 代码；本工具分支是孤儿分支，
+      # 需要显式把 main 建成本地 ref 才能按 ref 名传参
+      - name: fetch main ref
+        run: git fetch origin main:refs/heads/main
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bunx playwright install chromium --with-deps
+
+      # 同一 ref 左右两侧对比，判定应为通过且三维度精确 0
+      - name: compare main with itself
+        run: bun cli.ts report main --via dist --input configs/preview/default.ts
