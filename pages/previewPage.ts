@@ -18,7 +18,6 @@ interface CompareData {
   svgB: string
   durationA: number
   durationB: number
-  engine: 'smil' | 'css'
 }
 
 interface CompareWindow {
@@ -96,7 +95,7 @@ function bind(data: CompareData): void {
 
   refBadgeA.textContent = `A = ${data.refA}`
   refBadgeB.textContent = `B = ${data.refB}`
-  comboLabel.textContent = `${data.inputName} · ${data.engine} 引擎`
+  comboLabel.textContent = data.inputName
   progress.max = String(duration)
 
   // 主时钟：播放/步进/拖动与自动报告共用这一个 seek 通道

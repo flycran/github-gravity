@@ -47,6 +47,8 @@ const DEFAULT_OUT_DIR = '.svg-compare'
 /** 字段名与 commander 由 flag 名生成的属性一一对应（--input → input） */
 interface CliOptions {
   input: string
+  inputA?: string
+  inputB?: string
   via: ViaMode
   engine?: 'smil' | 'css'
   frames: number
@@ -59,6 +61,13 @@ interface CliOptions {
   maxAvgDiff: number
   maxMaxDiff: number
   pixelThreshold: number
+}
+
+/** 一轮对比的完整配置：A/B 侧可以各用各的输入（如 SMIL vs CSS） */
+interface ComboPlan {
+  name: string
+  inputA: CompareInput
+  inputB: CompareInput
 }
 
 /** 阈值在 CLI 层平铺，报告侧收敛为三维度结构 */
@@ -82,8 +91,16 @@ program
   .argument('<refB>', '对比侧 B：分支 / tag / commit')
   .option(
     '--input <path>',
-    '对比输入 JSON 文件或目录（目录下全部 .json 视为多组合）',
+    '共用对比输入 JSON 文件或目录（目录下全部 .json 视为多组合）',
     join(TOOL_ROOT, 'fixtures')
+  )
+  .option(
+    '--input-a <path>',
+    'A 侧专用输入 JSON（如 SMIL 引擎参数），覆盖 --input；单文件'
+  )
+  .option(
+    '--input-b <path>',
+    'B 侧专用输入 JSON（如 CSS 引擎参数），覆盖 --input；单文件'
   )
   .option('--via <mode>', '生成模式：src 源码直连 / dist 生产 bundle', 'src')
   .option('--engine <engine>', '覆盖输入中的动画引擎开关（smil|css）')
@@ -155,7 +172,26 @@ async function main(
     )
   }
 
-  const inputs = loadInputs(options.input)
+  // --input-a/--input-b 指定后进入单组合模式：两侧各用各的输入（对比引擎/算法差异）；
+  // 未指定的一侧回退到 --input 的第一个组合
+  let plans: ComboPlan[]
+  if (options.inputA !== undefined || options.inputB !== undefined) {
+    const shared = loadInputs(options.input)[0]
+    const inputA = options.inputA ? loadInputs(options.inputA)[0] : shared
+    const inputB = options.inputB ? loadInputs(options.inputB)[0] : shared
+    const name =
+      inputA.name === inputB.name
+        ? inputA.name
+        : `${inputA.name}__${inputB.name}`
+    plans = [{ name, inputA, inputB }]
+  } else {
+    plans = loadInputs(options.input).map((input) => ({
+      name: input.name,
+      inputA: input,
+      inputB: input
+    }))
+  }
+
   const outRoot = join(repoRoot, options.out)
   mkdirSync(outRoot, { recursive: true })
   // 产物目录自带忽略文件，不污染被测仓库的 git status（工具分支与主仓库解耦，不改其 .gitignore）
@@ -164,13 +200,16 @@ async function main(
   const commitA = await resolveRef(repoRoot, refA)
   const commitB = await resolveRef(repoRoot, refB)
   console.log(
-    `对比 ${refA} (${commitA.slice(0, 7)}) ↔ ${refB} (${commitB.slice(0, 7)})，via ${options.via}`
+    `对比 ${refA} (${commitA.slice(0, 7)}) ↔ ${refB} (${commitB.slice(0, 7)})，via ${options.via}` +
+      (options.inputA !== undefined || options.inputB !== undefined
+        ? `，输入 ${inputLabel(plans[0].inputA)} ↔ ${inputLabel(plans[0].inputB)}`
+        : '')
   )
 
   const combos: string[] = []
-  for (const input of inputs) {
-    combos.push(input.name)
-    console.log(`\n[${input.name}] 生成中…`)
+  for (const plan of plans) {
+    combos.push(plan.name)
+    console.log(`\n[${plan.name}] 生成中…`)
     await generateCombo(
       repoRoot,
       outRoot,
@@ -179,7 +218,7 @@ async function main(
       options,
       commitA,
       commitB,
-      input
+      plan
     )
   }
 
@@ -229,7 +268,7 @@ async function main(
   await previewServe(options, outRoot, combos[0], '/reportPage.html')
 }
 
-/** 导出两个 ref 并各自跑生成驱动，落 a.svg/b.svg/meta.json */
+/** 导出两个 ref 并各自跑生成驱动，落 a.svg/b.svg/meta.json；同 commit 复用同一份导出 */
 async function generateCombo(
   repoRoot: string,
   outRoot: string,
@@ -238,31 +277,34 @@ async function generateCombo(
   options: CliOptions,
   commitA: string,
   commitB: string,
-  input: CompareInput
+  plan: ComboPlan
 ): Promise<void> {
-  const comboDir = join(outRoot, input.name)
+  const comboDir = join(outRoot, plan.name)
   rmSync(comboDir, { recursive: true, force: true })
   mkdirSync(comboDir, { recursive: true })
 
   const driverSource =
     options.via === 'dist' ? renderDriverDist() : renderDriverSrc()
-  // 两种模式注入的都是原始选项 JSON：src 模式直通 gensvg；
-  // dist 模式由 driver 自行映射 INPUT_* 环境变量并拦截贡献数据请求
-  const injectedInput = applyEngineOverride(input.options, options.engine)
 
-  const sides: { side: 'a' | 'b'; commit: string; ref: string }[] = [
-    { side: 'a', commit: commitA, ref: refA },
-    { side: 'b', commit: commitB, ref: refB }
+  const sameCommit = commitA === commitB
+  let sharedExportDir: string | null = null
+  const sides: {
+    side: 'a' | 'b'
+    commit: string
+    ref: string
+    input: CompareInput
+  }[] = [
+    { side: 'a', commit: commitA, ref: refA, input: plan.inputA },
+    { side: 'b', commit: commitB, ref: refB, input: plan.inputB }
   ]
   const meta: ComboMeta = {
-    combo: input.name,
-    inputName: input.name,
+    combo: plan.name,
+    inputName: plan.name,
     refA,
     commitA,
     refB,
     commitB,
     via: options.via,
-    engine: 'smil',
     durationA: 0,
     durationB: 0,
     bytesA: 0,
@@ -273,14 +315,31 @@ async function generateCombo(
   }
 
   for (const side of sides) {
-    const exportDir = join(
-      mkdtempSync(join(tmpdir(), `svg-compare-${side.side}-`)),
-      'src'
-    )
-    mkdirSync(exportDir, { recursive: true })
-    try {
+    // 同 commit 时复用导出与依赖（典型场景：同 ref 对比 SMIL vs CSS）
+    let exportDir: string
+    let reused = false
+    if (sameCommit && sharedExportDir !== null) {
+      exportDir = sharedExportDir
+      reused = true
+    } else {
+      exportDir = join(
+        mkdtempSync(join(tmpdir(), `svg-compare-${side.side}-`)),
+        'src'
+      )
+      mkdirSync(exportDir, { recursive: true })
       await exportRef(repoRoot, side.ref, side.commit, exportDir)
-      writeFileSync(join(exportDir, DRIVER_FILE), driverSource, 'utf-8')
+      if (sameCommit) sharedExportDir = exportDir
+    }
+    try {
+      if (!reused) {
+        writeFileSync(join(exportDir, DRIVER_FILE), driverSource, 'utf-8')
+      }
+      // 两种模式注入的都是原始选项 JSON：src 模式直通 gensvg；
+      // dist 模式由 driver 自行映射 INPUT_* 环境变量并拦截贡献数据请求
+      const injectedInput = applyEngineOverride(
+        side.input.options,
+        options.engine
+      )
       writeFileSync(
         join(exportDir, INPUT_FILE),
         JSON.stringify(injectedInput),
@@ -289,6 +348,8 @@ async function generateCombo(
       const svgPath = join(comboDir, `${side.side}.svg`)
       const generated = await runDriver(exportDir, DRIVER_FILE, svgPath)
       const parsed = parseSvgMeta(await Bun.file(svgPath).text())
+      // 引擎不写入 meta：播放控制器由页面按产物 DOM 自行判定，
+      // 这里的判定只用于日志展示与选择 dur 的解析来源
       if (side.side === 'a') {
         meta.durationA = parsed.durationMs
         meta.bytesA = generated.bytes
@@ -298,14 +359,20 @@ async function generateCombo(
         meta.bytesB = generated.bytes
         meta.elapsedMsB = generated.elapsedMs
       }
-      meta.engine = parsed.engine
       console.log(
-        `  ${side.ref} → ${basename(svgPath)}（${(generated.bytes / 1024).toFixed(0)} KB，${(generated.elapsedMs / 1000).toFixed(1)}s，${parsed.engine}）`
+        `  ${side.ref}（${side.input.name}）→ ${basename(svgPath)}（${(generated.bytes / 1024).toFixed(0)} KB，${(generated.elapsedMs / 1000).toFixed(1)}s，${parsed.engine}）`
       )
     } finally {
-      if (!options.keep) rmSync(exportDir, { recursive: true, force: true })
-      else console.log(`  保留临时导出目录：${exportDir}`)
+      // 共享导出目录留给下一侧使用，循环外统一清理
+      if (!options.keep && !(sameCommit && sharedExportDir === exportDir)) {
+        rmSync(exportDir, { recursive: true, force: true })
+      } else if (options.keep) {
+        console.log(`  保留临时导出目录：${exportDir}`)
+      }
     }
+  }
+  if (!options.keep && sharedExportDir !== null) {
+    rmSync(sharedExportDir, { recursive: true, force: true })
   }
   writeFileSync(
     join(comboDir, 'meta.json'),
@@ -321,6 +388,10 @@ function applyEngineOverride(
 ): Record<string, unknown> {
   if (engine === undefined) return options
   return { ...options, css: engine === 'css' }
+}
+
+function inputLabel(input: CompareInput): string {
+  return input.name
 }
 
 async function previewServe(

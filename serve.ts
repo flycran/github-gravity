@@ -13,9 +13,9 @@ import { readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import open from 'open'
 import type { ReportData } from './pages/reportView'
-import type { SvgEngine } from './svgMeta'
 
-/** 组合级元数据：cli 生成 SVG 后写入 meta.json，serve/report 读取 */
+/** 组合级元数据：cli 生成 SVG 后写入 meta.json，serve/report 读取。
+ * 不记录引擎——播放控制器由页面按产物 DOM 内容自行判定（buildClock） */
 export interface ComboMeta {
   combo: string
   inputName: string
@@ -24,7 +24,6 @@ export interface ComboMeta {
   refB: string
   commitB: string
   via: 'src' | 'dist'
-  engine: SvgEngine
   durationA: number
   durationB: number
   bytesA: number
@@ -184,8 +183,7 @@ async function compareData(
     svgA,
     svgB,
     durationA: meta.durationA,
-    durationB: meta.durationB,
-    engine: meta.engine
+    durationB: meta.durationB
   })
 }
 
