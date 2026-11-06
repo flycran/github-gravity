@@ -65,7 +65,8 @@ const inputSchema = z.object({
   interval: nonNegativeNumber,
   friction: nonNegativeNumber,
   restitution: nonNegativeNumber,
-  'font-path': z.string()
+  'font-path': z.string(),
+  token: z.string()
 })
 
 /** 把 zod 校验失败整理成逐行可读的错误信息 */
@@ -105,7 +106,8 @@ export async function run(): Promise<void> {
       interval: core.getInput('interval'),
       friction: core.getInput('friction'),
       restitution: core.getInput('restitution'),
-      'font-path': core.getInput('font-path')
+      'font-path': core.getInput('font-path'),
+      token: core.getInput('token')
     })
 
     if (!parsed.success) {
@@ -121,6 +123,8 @@ export async function run(): Promise<void> {
     const textColor = input['text-color'] || 'black'
     const animation = input.animation || undefined
     const fontPath = input['font-path']
+
+    if (input.token.trim()) process.env.GITHUB_TOKEN = input.token.trim()
 
     core.info(`Generating gravity SVG for user: ${username}`)
     core.info(
