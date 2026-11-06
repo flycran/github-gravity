@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   const response = await fetch(`/api/report-data${query}`)
   if (!response.ok) {
     throw new Error(
-      `报告不存在（${response.status}）：${await response.text()}。先用 --report 生成，或在预览页点击"生成一致性报告"`
+      `报告不存在（${response.status}）：${await response.text()}。先用 report 子命令生成，或在预览页点击"生成一致性报告"`
     )
   }
   renderReport(container, (await response.json()) as ReportData)

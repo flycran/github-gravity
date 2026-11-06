@@ -163,7 +163,7 @@ async function prepare(
     statSync(join(repoRoot, '.git'), { throwIfNoEntry: false }) === undefined
   ) {
     throw new Error(
-      `当前目录不是 git 仓库：${repoRoot}（请在被测仓库根目录运行）`
+      `当前目录不是 git 仓库：${repoRoot}（请切换到要对比的仓库目录后运行）`
     )
   }
 

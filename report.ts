@@ -209,7 +209,7 @@ function wrapPlaywrightError(error: unknown): Error {
     message.includes('Executable does not exist')
   ) {
     return new Error(
-      `${message}\n自动报告依赖 playwright：先在本工具目录执行 bun install，再执行 bunx playwright install chromium`
+      `${message}\n自动报告依赖 playwright：先在本工具目录执行 bun install，再执行 bun x playwright install chromium`
     )
   }
   return error instanceof Error ? error : new Error(message)
