@@ -101,13 +101,14 @@ function parseNumber(value: string, label: string): number {
   return parsed
 }
 
-/** commander 子命令的 options 相互独立，共享 flags 需要逐个挂载 */
-function addSharedFlags(cmd: Command): Command {
+/** commander 子命令的 options 相互独立，共享 flags 需要逐个挂载；
+ * --input 的默认目录按子命令区分：手动跑 manual/，CI 门禁跑 ci/ */
+function addSharedFlags(cmd: Command, defaultInput: string): Command {
   return cmd
     .option(
       '--input <path>',
       '共用对比输入 JSON 文件或目录（目录下全部输入文件视为多组合）',
-      join(TOOL_ROOT, 'fixtures')
+      defaultInput
     )
     .option('--input-a <path>', 'A 侧专用输入 JSON（单文件），覆盖 --input')
     .option('--input-b <path>', 'B 侧专用输入 JSON（单文件），覆盖 --input')
@@ -486,7 +487,7 @@ const preview = program
   .argument('[refA]', '对比侧 A：分支 / tag / commit', DEFAULT_BASE_REF)
   .argument('[refB]', '对比侧 B：分支 / tag / commit', 'HEAD')
   .option('--no-open', '不自动打开浏览器（预览 serve 仍保留）')
-addSharedFlags(preview).action(
+addSharedFlags(preview, join(TOOL_ROOT, 'configs/preview/default.ts')).action(
   async (refA: string, refB: string, options: PreviewOptions) => {
     const prepared = await prepare(refA, refB, options)
     const combos = await generateAll(prepared, options)
@@ -505,7 +506,7 @@ const report = program
   .description('无头生成一致性报告并输出判定（未通过退出码 1）')
   .argument('[refA]', '对比侧 A：分支 / tag / commit', DEFAULT_BASE_REF)
   .argument('[refB]', '对比侧 B：分支 / tag / commit', 'HEAD')
-addSharedFlags(report).action(
+addSharedFlags(report, join(TOOL_ROOT, 'configs/batch')).action(
   async (refA: string, refB: string, options: SharedOptions) => {
     const prepared = await prepare(refA, refB, options)
     const combos = await generateAll(prepared, options)
@@ -521,7 +522,7 @@ const ci = program
   )
   .argument('[refA]', '对比侧 A：分支 / tag / commit', DEFAULT_BASE_REF)
   .argument('[refB]', '对比侧 B：分支 / tag / commit', 'HEAD')
-addSharedFlags(ci).action(
+addSharedFlags(ci, join(TOOL_ROOT, 'configs/batch')).action(
   async (refA: string, refB: string, options: SharedOptions) => {
     const prepared = await prepare(refA, refB, options)
     const combos = await generateAll(prepared, options)

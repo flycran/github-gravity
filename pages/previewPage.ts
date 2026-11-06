@@ -11,6 +11,8 @@ import { type ReportData, renderReport } from './reportView.ts'
 
 interface CompareData {
   combo: string
+  /** 产物目录下全部可用组合，供下拉切换 */
+  combos: string[]
   inputName: string
   refA: string
   refB: string
@@ -47,7 +49,7 @@ const opacityInput = document.getElementById('opacity') as HTMLInputElement
 const opacityLabel = document.getElementById('opacity-label') as HTMLSpanElement
 const refBadgeA = document.getElementById('ref-a') as HTMLElement
 const refBadgeB = document.getElementById('ref-b') as HTMLElement
-const comboLabel = document.getElementById('combo-label') as HTMLElement
+const comboSelect = document.getElementById('combo-select') as HTMLSelectElement
 const reportBtn = document.getElementById('report-btn') as HTMLButtonElement
 const reportPanel = document.getElementById('report-panel') as HTMLDivElement
 
@@ -80,7 +82,10 @@ async function ready(): Promise<void> {
 
 function fail(error: unknown): void {
   console.error('[svg-compare]', error)
-  comboLabel.textContent = `加载失败：${error instanceof Error ? error.message : String(error)}`
+  comboSelect.insertAdjacentHTML(
+    'beforebegin',
+    `<span class="error">${error instanceof Error ? error.message : String(error)}</span>`
+  )
   reportBtn.disabled = true
 }
 
@@ -95,7 +100,7 @@ function bind(data: CompareData): void {
 
   refBadgeA.textContent = `A = ${data.refA}`
   refBadgeB.textContent = `B = ${data.refB}`
-  comboLabel.textContent = data.inputName
+  fillComboSelect(data)
   progress.max = String(duration)
 
   // 主时钟：播放/步进/拖动与自动报告共用这一个 seek 通道
@@ -137,6 +142,20 @@ function bind(data: CompareData): void {
     else if (event.code === 'ArrowRight') stepBy(1)
   })
   reportBtn.addEventListener('click', generateReport)
+}
+
+/** 组合下拉：切换即整页重载到对应 combo（时钟/动画状态随之重建） */
+function fillComboSelect(data: CompareData): void {
+  const combos = data.combos.length > 0 ? data.combos : [data.combo]
+  comboSelect.innerHTML = combos
+    .map(
+      (name) =>
+        `<option value="${name}"${name === data.combo ? ' selected' : ''}>${name}</option>`
+    )
+    .join('')
+  comboSelect.addEventListener('change', () => {
+    location.search = `?combo=${encodeURIComponent(comboSelect.value)}`
+  })
 }
 
 function seekAll(ms: number): void {

@@ -24,7 +24,8 @@ const INPUT_EXTENSIONS = ['.json', '.ts', '.js', '.mjs']
 
 /**
  * 加载对比输入组合：文件为单组合，目录则扫描其中全部输入文件
- * （按文件名排序，`_` 前缀的 TS 共享模块除外）为多组合。
+ * （按文件名排序）为多组合。共享数据（如 calendarList）放在目录外层，
+ * 组合文件放子目录 import '../xxx.ts' 引用，天然不会进入扫描范围。
  */
 export async function loadInputs(inputPath: string): Promise<CompareInput[]> {
   const absolute = resolve(inputPath)
@@ -32,11 +33,7 @@ export async function loadInputs(inputPath: string): Promise<CompareInput[]> {
     return [{ name: comboName(absolute), options: await readInput(absolute) }]
   }
   const files = readdirSync(absolute)
-    .filter(
-      (file) =>
-        INPUT_EXTENSIONS.includes(extname(file)) &&
-        !(file.startsWith('_') && extname(file) !== '.json')
-    )
+    .filter((file) => INPUT_EXTENSIONS.includes(extname(file)))
     .sort()
   if (files.length === 0) {
     throw new Error(

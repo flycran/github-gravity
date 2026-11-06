@@ -107,8 +107,10 @@ bun cli.ts <子命令> [refA] [refB] [flags]
   [refB]                    对比侧 B（默认当前 HEAD）
 
 三个子命令共享的 flags：
-  --input <file|dir>        共用对比输入 JSON 或目录（目录下全部输入文件视为多组合；默认工具自带 fixtures/）
-  --input-a <file>          A 侧专用输入 JSON，覆盖 --input；未提供的一侧回退 --input 的第一个组合
+  --input <file|dir>        共用对比输入 JSON 或目录（目录下全部输入文件视为多组合）；
+                            默认按子命令区分：preview 用 configs/preview/default.ts，
+                            report / ci 用 configs/batch 目录
+  --input-a <file>          A 侧专用输入 JSON，覆盖 --input；未提供的一侧回退 --input 的解析结果
   --input-b <file>          B 侧专用输入 JSON，覆盖 --input
   --via <src|dist>          生成模式：src 源码直连（默认）/ dist 生产 bundle
   --engine <smil|css>       覆盖输入中的动画引擎开关
@@ -121,16 +123,36 @@ bun cli.ts <子命令> [refA] [refB] [flags]
   --keep                    保留临时导出目录（调试用）
 ```
 
+### 配置目录（configs/）
+
+两种模式对应不同的默认输入，共享数据自然放在外层：
+
+```
+configs/
+├── calendar.ts        # 共享贡献数据，子目录里 import '../calendar.ts' 引用
+├── batch/             # report / ci 的多组合目录（依次循环跑）
+│   ├── default-smil.ts
+│   ├── css-square-color.ts
+│   └── default-css.ts
+└── preview/           # preview 的单份配置；放在这里的文件不会被 report / ci 自动跑
+    └── default.ts
+```
+
+- `preview` 只跑一份配置（默认 `configs/preview/default.ts`）——只想手动看、不进门禁的组合放这个目录；
+  想预览 batch 里的某份直接 `preview --input configs/batch/xxx.ts`
+- `report` / `ci` 循环跑 `configs/batch` 下全部组合（`--input` 可换目录或单文件）
+- 页面顶部有组合下拉，产物目录里有多个组合时（如先 report 再 preview）可直接切换查看
+
 ### 对比不同输入（引擎 / 算法差异）
 
 `--input-a`/`--input-b` 让两侧各用各的参数，用于对比同一份代码在不同引擎、不同压缩算法下的视觉差异（此时通常两侧传同一个 ref）：
 
 ```sh
 # SMIL vs CSS 两种引擎（同 ref，输入只差 css 开关与相关参数）
-bun cli.ts main main --input-a fixtures/default-smil.json --input-b fixtures/css-square-color.json
+bun cli.ts preview main main --input-a configs/preview/smil.ts --input-b configs/preview/css.ts
 
 # Greedy vs DP 两种压缩算法
-bun cli.ts main main --input-a fixtures/default-smil.json --input-b fixtures/dp-compression.json
+bun cli.ts preview main main --input-a configs/preview/smil.ts --input-b configs/batch/dp-compression.ts
 ```
 
 `--input-a`/`--input-b` 未提供的一侧回退到 `--input` 的第一个组合；组合名按两侧输入名拼接（如 `default-smil__css-square-color`）。两侧时长不同时以较长一方为采样范围，短的一方末帧停驻。注意：输入不同的对比**不代表回归差异**，仅用于分析参数间的行为差异——CI 门禁场景仍应共用一份输入。

@@ -177,6 +177,8 @@ async function compareData(
   ])
   return Response.json({
     combo,
+    /** 产物目录下全部可用组合，供页面切换 */
+    combos: deps.listCombos(),
     inputName: meta.inputName,
     refA: refLabel(meta.refA, meta.commitA),
     refB: refLabel(meta.refB, meta.commitB),
