@@ -21,5 +21,5 @@
     "target": "ES2022"
   },
   "exclude": ["src/web/**/*"],
-  "include": ["src", "__tests__", "__fixtures__"]
+  "include": ["src", "__tests__", "__fixtures__", "scripts"]
 }

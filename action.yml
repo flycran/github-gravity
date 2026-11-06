@@ -23,7 +23,8 @@ inputs:
     default: '48'
   compression-tolerance:
     description: >-
-      Trajectory compression tolerance in SVG pixels. At every original moment of the
+      Trajectory compression tolerance in SVG coordinate units (user units; one
+      unit spans scale on-screen pixels). At every original moment of the
       animation, the interpolated position stays within this distance of the real one
       (per axis with the CSS engine, combined offset with SMIL), which shrinks the SVG
       at the cost of a small visual approximation. 0 keeps the trajectory lossless in

@@ -84,7 +84,7 @@
         "noCatchAssign": "error",
         "noClassAssign": "error",
         "noCompareNegZero": "error",
-        "noConsole": "off",
+        "noConsole": "error",
         "noConstantBinaryExpressions": "error",
         "noControlCharactersInRegex": "error",
         "noDebugger": "error",
@@ -129,6 +129,18 @@
       "!**/node_modules"
     ]
   },
+  "overrides": [
+    {
+      "includes": ["scripts/**", "src/app.ts", "src/web/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "jsxQuoteStyle": "double",

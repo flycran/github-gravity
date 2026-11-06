@@ -1,7 +1,6 @@
 # GitHub Gravity
 
 ![CI](https://github.com/flycran/github-gravity/actions/workflows/ci.yml/badge.svg)
-![Coverage](./badges/coverage.svg)
 
 Make your GitHub contribution graph fall under gravity, colliding with custom text to produce a beautiful animated SVG.
 
@@ -41,7 +40,7 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 | `text` | ❌ | `username` value | Text to display as collision obstacles |
 | `output-path` | ❌ | `gravity.svg` | Path to write the generated SVG file |
 | `font-size` | ❌ | `48` | Font size of the collision text |
-| `compression-tolerance` | ❌ | `0.5` | Trajectory compression tolerance in SVG pixels. At every original moment the animated position stays within this distance of the real one (per axis with CSS, combined offset with SMIL); `0` is lossless in both position and timing (see below) |
+| `compression-tolerance` | ❌ | `0.5` | Trajectory compression tolerance in SVG coordinate units (user units; one unit spans `scale` on-screen pixels). At every original moment the animated position stays within this distance of the real one (per axis with CSS, combined offset with SMIL); `0` is lossless in both position and timing (see below) |
 | `compression-algorithm` | ❌ | `Greedy` | Trajectory compression algorithm: `Greedy` (fast), `DP` (smallest SVG), `RDP` (fastest). See below for the trade-offs |
 | `max-simulation-time` | ❌ | - | Maximum animation playback duration in seconds. Once reached, blocks freeze where they are instead of waiting for every block to settle. Leave empty to play until all blocks rest |
 | `shape` | ❌ | `circle` | Shape of contribution blocks: `circle` or `square` |
@@ -64,7 +63,7 @@ Inspired by [Orta Therox](https://github.com/Orta). Thanks Orta for your outstan
 
 The trajectory is compressed by default: `compression-tolerance` merges trajectory
 points into keyframes so that, at every original moment, the interpolated position
-stays within the given distance (in SVG pixels) of the real one — speed changes such
+stays within the given distance (in SVG coordinate units) of the real one — speed changes such
 as bounces, landings and stops keep their real pace.
 
 With the CSS engine each axis is compressed independently: the bound applies to each
@@ -81,14 +80,14 @@ the cost of visibly cutting corners.
 ### Choosing a compression algorithm
 
 All three algorithms make the same fidelity guarantee; they differ only in how many
-keyframes they keep and how long they take. Measured on 360 real trajectories of ~1,000
+keyframes they keep and how long they take. Measured on 362 real trajectories of ~860
 points each at the default tolerance `0.5`:
 
 | Algorithm | Avg. keyframes | Compression | Runtime | Notes |
 |---|---|---|---|---|
-| `Greedy` (default) | 32.1 | 30.7x | ~0.2s | Single pass, no backtracking. Within 1–3% of the optimum. |
-| `DP` | 31.3 | 31.5x | ~2s | Globally fewest keyframes = smallest SVG. Runtime grows superlinearly with trajectory length. |
-| `RDP` | 37.1 | 26.6x | ~40ms | Fastest, keeps the most keyframes. |
+| `Greedy` (default) | 26.2 | 65.5x | ~0.16s | Single pass, no backtracking. Within ~7% of the optimum. |
+| `DP` | 24.4 | 70.4x | ~3.6s | Globally fewest keyframes = smallest SVG. Runtime grows superlinearly with trajectory length. |
+| `RDP` | 33.7 | 50.9x | ~14ms | Fastest, keeps the most keyframes. |
 
 In most cases, just keep the default.
 

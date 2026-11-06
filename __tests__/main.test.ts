@@ -198,6 +198,69 @@ describe('action input plumbing', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it('fails when a numeric input is not finite', async () => {
+    setInputs({ SCALE: 'Infinity' })
+
+    await run()
+
+    expect(captured).toBeNull()
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('fails when a size input is non-positive', async () => {
+    setInputs({ WIDTH: '-1' })
+
+    await run()
+
+    expect(captured).toBeNull()
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('fails when the shape is not circle or square', async () => {
+    setInputs({ SHAPE: 'hexagon' })
+
+    await run()
+
+    expect(captured).toBeNull()
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('fails when css is not a boolean literal', async () => {
+    setInputs({ CSS: 'yes' })
+
+    await run()
+
+    expect(captured).toBeNull()
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('fails when the username is blank', async () => {
+    setInputs({ USERNAME: '  ' })
+
+    await run()
+
+    expect(captured).toBeNull()
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('trims surrounding whitespace from numeric inputs', async () => {
+    setInputs({ SCALE: ' 2.5 ' })
+
+    await run()
+
+    expect(captured).toMatchObject({ scale: 2.5 })
+  })
+
+  it('fails when the generator throws a non-Error value', async () => {
+    spyOn(gensvgModule, 'gensvg').mockImplementation(async () => {
+      throw 'boom'
+    })
+
+    await run()
+
+    expect(process.exitCode).toBe(1)
+  })
+
   it('writes the generated svg to output-path', async () => {
     await run()
 
