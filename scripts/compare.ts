@@ -9,7 +9,7 @@
 
 import { maxChannelDeviation, sumSpans } from '../__tests__/simplifyHelpers'
 import { SCALE } from '../src/const'
-import { startSimulation } from '../src/utils/physics'
+import { simulateRaw } from '../src/utils/physics'
 import {
   CompressionAlgorithm,
   compressTrajectory
@@ -20,17 +20,10 @@ const algorithms: CompressionAlgorithm[] = ['DP', 'RDP', 'Greedy']
 // 与 physics.ts 相同的换算：容差以 SVG 坐标单位输入，除以 SCALE 转为物理坐标单位
 const tolerances = [0.5 / SCALE, 1.5 / SCALE, 3 / SCALE]
 
-// 禁用压缩拿到原始轨迹（不含 span），压缩与计时都在本脚本内进行；
-// 引擎返回的逐帧关键帧在这里解包回原始采样序列（无损往返）
-const simulation = await startSimulation({
-  username: 'Orta',
-  disableCompression: true
-})
+// 纯物理模拟拿原始采样轨迹（不经过压缩），压缩与计时都在本脚本内进行
+const simulation = await simulateRaw({ username: 'Orta' })
 
-const tracks = simulation.contributions.map((c) => ({
-  x: c.trajectory.x.map((frame) => frame.value),
-  y: c.trajectory.y.map((frame) => frame.value)
-}))
+const tracks = simulation.contributions.map((c) => c.trajectory)
 const totalPoints = tracks.reduce((sum, t) => sum + t.x.length + t.y.length, 0)
 console.log(
   `${tracks.length} trajectories, ${totalPoints} channel values total, ` +

@@ -233,6 +233,18 @@ export interface SimulationResult {
   centerY: number
 }
 
+/** 纯物理模拟的结果：轨迹为未经压缩的原始采样序列 */
+export interface RawSimulationResult {
+  stepCount: number
+  time: number
+  textPaths: Pick<TextPathResult, 'rect' | 'pathData'>[]
+  contributions: ContributionJson[]
+  /** 文字在物理世界中的 X 偏移量 */
+  offsetX: number
+  /** 文字在物理世界中的 Y 偏移量 */
+  centerY: number
+}
+
 export interface SimulationOptions {
   username: string
   text?: string
@@ -424,26 +436,18 @@ export async function createSimulationWorld(
 }
 
 /**
- * 开始模拟
+ * 纯物理模拟：方块自由落体、碰撞、静止收敛，轨迹保留全部原始采样，
+ * 不做任何压缩。需要压缩产物时使用 startSimulation。
  */
-export async function startSimulation(
+export async function simulateRaw(
   options: SimulationOptions
-): Promise<SimulationResult> {
-  const {
-    shape,
-    size,
-    compressionAlgorithm,
-    compressionTolerance,
-    disableCompression,
-    jointPosition,
-    maxSimulationTime,
-    speed
-  } = withDefaults(DEFAULT_OPTIONS, options)
+): Promise<RawSimulationResult> {
+  const { size, maxSimulationTime, speed } = withDefaults(
+    DEFAULT_OPTIONS,
+    options
+  )
   const { world, contributions, textPaths, offsetX, centerY } =
     await createSimulationWorld(options)
-
-  // 容差从 SVG 坐标单位换算回物理坐标单位，让压缩函数与渲染缩放解耦
-  const tolerance = compressionTolerance / SCALE
 
   /** 判断所有贡献块的刚体是否都已静止（线速度与角速度均低于阈值） */
   function areAllCollidersSleeping(): boolean {
@@ -508,28 +512,51 @@ export async function startSimulation(
   return {
     stepCount,
     time: endTime - startTime,
-    contributions: contributions.map((contribution): RenderedContribution => {
-      const json = contribution.toJSON()
-      // 位置与自转按各自容差独立分段，旋转剧变不会迫使位置加密
-      return {
-        date: json.date,
-        color: json.color,
-        trajectory: disableCompression
-          ? toKeyframeTrajectory(json.trajectory)
-          : compressTrajectory(
-              json.trajectory,
-              tolerance,
-              shape === 'square' ? MAX_ROTATION_ERROR : 0,
-              compressionAlgorithm,
-              jointPosition
-            )
-      }
-    }),
+    contributions: contributions.map((contribution) => contribution.toJSON()),
     textPaths: textPaths.map(({ pathData, rect }) => ({
       pathData: pathData,
       rect: rect
     })),
     offsetX,
     centerY
+  }
+}
+
+/**
+ * 物理模拟 + 轨迹压缩：action 与网页播放器的入口。
+ * disableCompression 时跳过压缩，返回逐帧关键帧的完整轨迹。
+ */
+export async function startSimulation(
+  options: SimulationOptions
+): Promise<SimulationResult> {
+  const {
+    shape,
+    compressionAlgorithm,
+    compressionTolerance,
+    disableCompression,
+    jointPosition
+  } = withDefaults(DEFAULT_OPTIONS, options)
+  const raw = await simulateRaw(options)
+
+  // 容差从 SVG 坐标单位换算回物理坐标单位，让压缩函数与渲染缩放解耦
+  const tolerance = compressionTolerance / SCALE
+  // 位置与自转按各自容差独立分段，旋转剧变不会迫使位置加密
+  const maxRotationError = shape === 'square' ? MAX_ROTATION_ERROR : 0
+
+  return {
+    ...raw,
+    contributions: raw.contributions.map(({ date, color, trajectory }) => ({
+      date,
+      color,
+      trajectory: disableCompression
+        ? toKeyframeTrajectory(trajectory)
+        : compressTrajectory(
+            trajectory,
+            tolerance,
+            maxRotationError,
+            compressionAlgorithm,
+            jointPosition
+          )
+    }))
   }
 }

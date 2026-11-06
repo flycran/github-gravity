@@ -6,6 +6,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gensvg } from '../src/utils/gensvg.js'
+import { simulateRaw } from '../src/utils/physics'
 
 const originalFetch = globalThis.fetch
 
@@ -211,6 +212,21 @@ describe('full pipeline integration', () => {
     })
 
     expect(svg).not.toContain('keyTimes')
+  })
+
+  it('simulateRaw returns raw sampled trajectories without compression', async () => {
+    const raw = await simulateRaw({
+      username: 'testuser',
+      calendarList: makeCalendarList()
+    })
+
+    expect(raw.contributions.length).toBeGreaterThan(0)
+    for (const { trajectory } of raw.contributions) {
+      // 原始采样是纯数字序列，而非 {value, span} 关键帧包装
+      expect(trajectory.x.length).toBeGreaterThan(0)
+      expect(trajectory.x.every((v) => typeof v === 'number')).toBe(true)
+      expect(trajectory.y.every((v) => typeof v === 'number')).toBe(true)
+    }
   })
 
   it('honors custom width, height, size and interval', async () => {
