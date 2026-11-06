@@ -35160,7 +35160,7 @@ const LEVEL_TO_INTENSITY = {
     THIRD_QUARTILE: 3,
     FOURTH_QUARTILE: 4
 };
-/** 官方贡献日历的窗口上限为一年，两个驱动共用同一窗口 */
+/** 两个驱动共用的贡献日历窗口 */
 function contributionWindow(now = new Date()) {
     const to = new Date(now);
     const from = new Date(now);
@@ -35173,7 +35173,7 @@ function clipToWindow(contributions, from, to) {
         .map((week) => week.filter((day) => day.date >= from && day.date <= to))
         .filter((week) => week.length > 0);
 }
-/** 按周数截断，保留最近的 N 周 */
+/** 保留最近的 N 周 */
 function limitWeeks(contributions, limit) {
     return limit ? contributions.slice(-limit) : contributions;
 }
@@ -35231,7 +35231,7 @@ async function fetchContributionsFromGraphql(username, token, limit) {
  *
  * @param username - GitHub 用户名
  * @param limit - 限制返回的周数
- * @throws 如果请求失败或用户名不存在
+ * @throws 请求失败或用户名不存在
  */
 async function fetchContributionsFromCalendar(username, limit) {
     const url = `${CALENDAR_ENDPOINT}/${username}`;
@@ -53450,7 +53450,6 @@ async function run() {
         const textColor = input['text-color'] || 'black';
         const animation = input.animation || undefined;
         const fontPath = input['font-path'];
-        // token 只被数据获取层消费，经环境变量传入，避免贯穿整条渲染管线
         if (input.token.trim())
             process.env.GITHUB_TOKEN = input.token.trim();
         info(`Generating gravity SVG for user: ${username}`);
