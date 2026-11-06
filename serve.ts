@@ -240,12 +240,16 @@ export async function openBrowser(url: string): Promise<void> {
   }
 }
 
-/** 列出产物根下的组合目录（按名字排序） */
+/** 列出产物根下的组合目录（按名字排序）；点号开头的是工具内部目录（如临时导出 .tmp） */
 export function listCombos(outRoot: string): string[] {
   try {
     return readdirSync(outRoot)
-      .filter((name) =>
-        statSync(join(outRoot, name), { throwIfNoEntry: false })?.isDirectory()
+      .filter(
+        (name) =>
+          !name.startsWith('.') &&
+          statSync(join(outRoot, name), {
+            throwIfNoEntry: false
+          })?.isDirectory()
       )
       .sort()
   } catch {

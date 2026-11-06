@@ -52,6 +52,8 @@ jobs:
   visual-compare:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 拉全历史：PR merge commit 的两个父提交（base/head）
+      # 随之到位，fork PR 也无需额外 fetch
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -60,7 +62,8 @@ jobs:
       # major 版本 gate：大版本不一致说明是有意的破坏性变更，仍执行对比但仅报告不阻止合并
       - id: major-gate
         run: |
-          base_major=$(git show origin/${{ github.base_ref }}:package.json | jq -r '.version | split(".")[0]')
+          base_sha='${{ github.event.pull_request.base.sha }}'
+          base_major=$(git show "$base_sha":package.json | jq -r '.version | split(".")[0]')
           head_major=$(jq -r '.version | split(".")[0]' package.json)
           echo "enforce=$([ "$base_major" = "$head_major" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
@@ -68,7 +71,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - run: bunx playwright install chromium --with-deps
-      # 工具分支 checkout 到子目录，与主仓库代码互不干扰
+      # 工具分支 checkout 到子目录，与主仓库代码互不干扰（来自 base 仓库，fork 同样可用）
       - uses: actions/checkout@v6
         with:
           ref: tools/svg-compare
@@ -76,9 +79,8 @@ jobs:
       - id: compare
         continue-on-error: ${{ steps.major-gate.outputs.enforce == 'false' }}
         run: |
-          base=$(git merge-base origin/${{ github.base_ref }} HEAD)
-          bun svg-compare-tool/cli.ts ci "$base" HEAD \
-            --input svg-compare-tool/fixtures --via dist
+          bun svg-compare-tool/cli.ts ci '${{ github.event.pull_request.base.sha }}' HEAD \
+            --via dist
       - if: always() && steps.compare.outcome == 'failure'
         run: |
           if [ "${{ steps.major-gate.outputs.enforce }}" = "true" ]; then
@@ -91,6 +93,10 @@ jobs:
           name: svg-compare-report
           path: .svg-compare/
 ```
+
+**对比基准的选择**：A 用 `github.event.pull_request.base.sha`（PR 发起时的 base 提交，不会因 main 前进而漂移），B 用 checkout 出来的 `HEAD`（PR 的 merge commit，即合并后的状态）。两者都是 merge commit 的祖先/自身，`fetch-depth: 0` 下必然在本地。
+
+**fork PR 说明**：workflow 定义在 base 仓库、在 base 仓库的 runner 上运行，`checkout@v6` 拉取的是 `refs/pull/N/merge`，其两个父提交就是 base.sha 和 head.sha。配合 `fetch-depth: 0`，这两个提交必然在本地对象库中，工具无需任何 secrets，也不需要额外的 fetch 步骤。
 
 ## 参数
 

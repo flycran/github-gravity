@@ -11,14 +11,7 @@
  * - ci：CI 门禁，报告 + summary.json + GitHub Step Summary
  */
 
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  statSync,
-  writeFileSync
-} from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { Command } from 'commander'
 import { exportRef, resolveRef, runDriver } from './checkout'
@@ -44,6 +37,8 @@ import { parseSvgMeta } from './svgMeta'
 
 const TOOL_ROOT = import.meta.dir
 const DEFAULT_OUT_DIR = '.svg-compare'
+/** 临时导出目录名（位于产物根下，以 . 开头便于从组合列表中排除） */
+const TMP_DIR_NAME = '.tmp'
 
 /** 三个子命令共享的生成 flags（字段名与 commander 生成的属性一一对应） */
 interface SharedOptions {
@@ -234,6 +229,8 @@ async function generateCombo(
   plan: ComboPlan
 ): Promise<void> {
   const { repoRoot, outRoot, refA, refB, commitA, commitB } = prepared
+  // 临时导出根：放在产物根下的隐藏目录，与仓库同文件系统
+  const tmpRoot = join(outRoot, TMP_DIR_NAME)
   const comboDir = join(outRoot, plan.name)
   rmSync(comboDir, { recursive: true, force: true })
   mkdirSync(comboDir, { recursive: true })
@@ -277,9 +274,12 @@ async function generateCombo(
       exportDir = sharedExportDir
       reused = true
     } else {
+      // 导出目录放在产物根下而非系统临时目录：与被测仓库同一文件系统
+      // （跨文件系统 install 慢，/tmp 容量也未必够），且产物根的 .gitignore
+      // 已忽略全部内容，不污染 git status
       exportDir = join(
-        mkdtempSync(join(tmpdir(), `svg-compare-${side.side}-`)),
-        'src'
+        tmpRoot,
+        `${side.side}-${crypto.randomUUID().slice(0, 8)}`
       )
       mkdirSync(exportDir, { recursive: true })
       await exportRef(repoRoot, side.ref, side.commit, exportDir)
