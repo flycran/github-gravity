@@ -233,7 +233,12 @@ export async function fetchContributions(
   username: string,
   options: FetchContributionsOptions = {}
 ): Promise<CalendarResponse> {
-  const token = options.token?.trim() || process.env.GITHUB_TOKEN?.trim()
+  // web 播放器在浏览器里运行，没有 process，按无 token 处理
+  const envToken =
+    typeof process === 'undefined'
+      ? undefined
+      : process.env.GITHUB_TOKEN?.trim()
+  const token = options.token?.trim() || envToken
 
   if (token) {
     return fetchContributionsFromGraphql(username, token, options.limit)
