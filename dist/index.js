@@ -35257,7 +35257,11 @@ async function fetchContributionsFromCalendar(username, limit) {
  * 否则回落到无需认证的 gh-calendar。
  */
 async function fetchContributions(username, options = {}) {
-    const token = options.token?.trim() || process.env.GITHUB_TOKEN?.trim();
+    // web 播放器在浏览器里运行，没有 process，按无 token 处理
+    const envToken = typeof process === 'undefined'
+        ? undefined
+        : process.env.GITHUB_TOKEN?.trim();
+    const token = options.token?.trim() || envToken;
     if (token) {
         return fetchContributionsFromGraphql(username, token, options.limit);
     }
